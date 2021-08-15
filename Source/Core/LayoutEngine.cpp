@@ -29,6 +29,7 @@
 #include "LayoutEngine.h"
 #include "LayoutBlockBoxSpace.h"
 #include "LayoutDetails.h"
+#include "LayoutFlex.h"
 #include "LayoutInlineBoxText.h"
 #include "LayoutTable.h"
 #include "Pool.h"
@@ -311,9 +312,45 @@ bool LayoutEngine::FormatElementInlineBlock(LayoutBlockBox* block_context_box, E
 	return true;
 }
 
-bool LayoutEngine::FormatElementFlex(LayoutBlockBox* /*block_context_box*/, Element* /*element*/)
+bool LayoutEngine::FormatElementFlex(LayoutBlockBox* block_context_box, Element* element)
 {
-	// TODO
+	const ComputedValues& computed = element->GetComputedValues();
+	
+	const Vector2f containing_block = LayoutDetails::GetContainingBlock(block_context_box);
+
+	// Build the initial box as specified by the flex's style, as if it were a normal block element.
+	Box box;
+	LayoutDetails::BuildBox(box, containing_block, element, false);
+
+	Vector2f min_size, max_size;
+	LayoutDetails::GetMinMaxWidth(min_size.x, max_size.x, computed, box, containing_block.x);
+	LayoutDetails::GetMinMaxHeight(min_size.y, max_size.y, computed, box, containing_block.y);
+	const Vector2f initial_content_size = box.GetSize();
+
+	// Format the flexbox, this may adjust the box content size.
+	const Vector2f content_overflow_size = LayoutFlex::Format(box, min_size, max_size, element);
+
+	const Vector2f final_content_size = box.GetSize();
+	RMLUI_ASSERT(final_content_size.y >= 0);
+
+	if (final_content_size != initial_content_size)
+	{
+		// Perform this step to re-evaluate any auto margins.
+		LayoutDetails::BuildBoxSizeAndMargins(box, min_size, max_size, containing_block, element, false, true);
+	}
+
+	// Now that the box is finalized, we can add the flex container as a block element. If we did it earlier, eg. just before formatting the flexbox,
+	// then the flexbox element's offset would not be correct in cases where table size and auto-margins were adjusted.
+	LayoutBlockBox* flex_block_context_box = block_context_box->AddBlockElement(element, box, final_content_size.y, final_content_size.y);
+	if (!flex_block_context_box)
+		return false;
+
+	// Set the inner content size so that any overflow can be caught.
+	flex_block_context_box->ExtendInnerContentSize(content_overflow_size);
+
+	// If the close failed, it probably means that its parent produced scrollbars.
+	if (flex_block_context_box->Close() != LayoutBlockBox::OK)
+		return false;
 
 	return true;
 }

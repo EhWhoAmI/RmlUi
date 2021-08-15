@@ -1,0 +1,25 @@
+<rml>
+<head>
+    <title>Flex 01</title>
+    <link type="text/rcss" href="../style.rcss"/>
+	<link rel="help" href="https://drafts.csswg.org/css-flexbox/" />
+	<meta name="Description" content="Basic flexible box layout." />
+	<style>
+		#flex {
+			display: flex;
+			border: 1px #333;
+		}
+		#flex > * {
+			border: 1px #cc3;
+		}
+	</style>
+</head>
+
+<body>
+<div id="flex">
+	<div>Hello</div>
+	<div>world!</div>
+</div>
+<handle size_target="#document"/>
+</body>
+</rml>
