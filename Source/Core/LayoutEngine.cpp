@@ -328,7 +328,7 @@ bool LayoutEngine::FormatElementFlex(LayoutBlockBox* block_context_box, Element*
 	const Vector2f initial_content_size = box.GetSize();
 
 	// Format the flexbox, this may adjust the box content size.
-	const Vector2f content_overflow_size = LayoutFlex::Format(box, min_size, max_size, element);
+	const Vector2f content_overflow_size = LayoutFlex::Format(box, min_size, max_size, containing_block, element);
 
 	const Vector2f final_content_size = box.GetSize();
 	RMLUI_ASSERT(final_content_size.y >= 0);

@@ -7,10 +7,14 @@
 	<style>
 		#flex {
 			display: flex;
-			border: 1px #333;
+			border: 2px #333;
+			flex-wrap: wrap;
+			overflow: hidden;
 		}
 		#flex > * {
-			border: 1px #cc3;
+			border: 2px #d66;
+			background: #fff;
+			text-align: center;
 		}
 	</style>
 </head>
@@ -18,7 +22,8 @@
 <body>
 <div id="flex">
 	<div>Hello</div>
-	<div>world!</div>
+	<div>big world!</div>
+	<div>LOOOOOOOOOOOOOOOOOOOOONG</div>
 </div>
 <handle size_target="#document"/>
 </body>

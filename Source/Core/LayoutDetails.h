@@ -86,10 +86,10 @@ public:
 	/// @param[in] override_shrink_to_fit_width Provide a fixed shrink-to-fit width instead of formatting the element when its properties allow shrinking.
 	static void BuildBoxSizeAndMargins(Box& box, Vector2f min_size, Vector2f max_size, Vector2f containing_block, Element* element, bool inline_element, bool replaced_element, float override_shrink_to_fit_width = -1);
 
-private:
 	/// Formats the element and returns the width of its contents.
 	static float GetShrinkToFitWidth(Element* element, Vector2f containing_block);
 
+private:
 	/// Calculates and returns the content size for replaced elements.
 	static Vector2f CalculateSizeForReplacedElement(Vector2f specified_content_size, Vector2f min_size, Vector2f max_size, Vector2f intrinsic_size, float intrinsic_ratio);
 
