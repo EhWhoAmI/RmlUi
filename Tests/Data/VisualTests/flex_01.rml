@@ -7,14 +7,15 @@
 	<style>
 		#flex {
 			display: flex;
-			border: 2px #333;
-			flex-wrap: wrap;
+			border: 2dp #333;
+			flex-wrap: nowrap;
 			overflow: hidden;
 		}
 		#flex > * {
-			border: 2px #d66;
+			border: 2dp #d66;
 			background: #fff;
 			text-align: center;
+			flex: 1 1 auto;
 		}
 	</style>
 </head>

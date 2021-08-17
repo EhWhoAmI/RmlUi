@@ -90,13 +90,27 @@ using ComputedFlexItemSize = ComputedTrackSize;
 struct FlexItem {
 	Element* element;
 
+	// Filled during the build step
 	bool auto_margin_a, auto_margin_b;
 	float margin_a, margin_b;
 	float padding_border_a, padding_border_b;
+	float sum_edges;              // Inner->outer size
+	float min_size, max_size;     // Inner size
 
-	float flex_base_size;         // Inner size
+	float flex_shrink_factor;
+	float flex_grow_factor;
+	Style::AlignSelf align_self;
+
+	float inner_flex_base_size;   // Inner size
+	float flex_base_size;         // Outer size
 	float hypothetical_main_size; // Outer size
 
+	// Used for resolving flexible length
+	enum class Violation : std::uint8_t { None = 0, Min, Max };
+	bool frozen;
+	Violation violation;
+	float target_main_size;       // Outer size
+	float used_main_size;         // Outer size
 };
 
 struct FlexLine {
@@ -160,47 +174,62 @@ void LayoutFlex::Format()
 
 		item.auto_margin_a = (item_size.margin_a.type == Style::Margin::Auto);
 		item.auto_margin_b = (item_size.margin_b.type == Style::Margin::Auto);
+		item.flex_shrink_factor = computed.flex_shrink;
+		item.flex_grow_factor = computed.flex_grow;
+		item.align_self = computed.align_self;
 
 		GetEdgeSizes(item.margin_a, item.margin_b, item.padding_border_a, item.padding_border_b, item_size, main_size_base_value);
 		
 		const float padding_border_sum = item.padding_border_a + item.padding_border_b;
+		const float margin_sum = item.margin_a + item.margin_b;
 
 		// Find the flex base size (possibly negative when using border box sizing)
 		if (computed.flex_basis.type != Style::FlexBasis::Auto)
 		{
-			item.flex_base_size = ResolveValue(computed.flex_basis, main_size_base_value);
+			item.inner_flex_base_size = ResolveValue(computed.flex_basis, main_size_base_value);
 			if (computed.box_sizing == Style::BoxSizing::BorderBox)
-				item.flex_base_size -= padding_border_sum;
+				item.inner_flex_base_size -= padding_border_sum;
 		}
 		else if (item_size.size.type != Style::LengthPercentageAuto::Auto)
 		{
-			item.flex_base_size = ResolveValue(item_size.size, main_size_base_value);
+			item.inner_flex_base_size = ResolveValue(item_size.size, main_size_base_value);
 			if (computed.box_sizing == Style::BoxSizing::BorderBox)
-				item.flex_base_size -= padding_border_sum;
+				item.inner_flex_base_size -= padding_border_sum;
 		}
 		else if (main_axis_horizontal)
 		{
-			item.flex_base_size = LayoutDetails::GetShrinkToFitWidth(element, flex_content_containing_block);
+			item.inner_flex_base_size = LayoutDetails::GetShrinkToFitWidth(element, flex_content_containing_block);
 		}
 		else
 		{
-			LayoutEngine::FormatElement(element, flex_content_containing_block);
-			item.flex_base_size = element->GetBox().GetSize().y;
+			Box box;
+			LayoutDetails::BuildBox(box, flex_content_containing_block, element, false);
+			if (box.GetSize().y >= 0.f)
+			{
+				item.inner_flex_base_size = box.GetSize().y;
+			}
+			else
+			{
+				LayoutEngine::FormatElement(element, flex_content_containing_block, &box);
+				item.inner_flex_base_size = element->GetBox().GetSize().y;
+			}
 		}
 
 		// Calculate the hypothetical main size (clamped flex base size).
 		{
-			float min_size = ResolveValue(item_size.min_size, main_size_base_value);
-			float max_size = (item_size.max_size.value < 0.f ? FLT_MAX : ResolveValue(item_size.max_size, main_size_base_value));
+			item.sum_edges = padding_border_sum + margin_sum;
+			item.min_size = ResolveValue(item_size.min_size, main_size_base_value);
+			item.max_size = (item_size.max_size.value < 0.f ? FLT_MAX : ResolveValue(item_size.max_size, main_size_base_value));
 
 			if (computed.box_sizing == Style::BoxSizing::BorderBox)
 			{
-				min_size = Math::Max(0.0f, min_size - padding_border_sum);
-				if (max_size < FLT_MAX)
-					max_size = Math::Max(0.0f, max_size - padding_border_sum);
+				item.min_size = Math::Max(0.0f, item.min_size - padding_border_sum);
+				if (item.max_size < FLT_MAX)
+					item.max_size = Math::Max(0.0f, item.max_size - padding_border_sum);
 			}
 
-			item.hypothetical_main_size = Math::Clamp(item.flex_base_size, min_size, max_size) + padding_border_sum;
+			item.hypothetical_main_size = Math::Clamp(item.inner_flex_base_size, item.min_size, item.max_size) + item.sum_edges;
+			item.flex_base_size = item.inner_flex_base_size + item.sum_edges;
 		}
 
 		items.push_back(std::move(item));
@@ -210,7 +239,6 @@ void LayoutFlex::Format()
 	{
 		return;
 	}
-
 
 	// Collect the items into lines.
 	FlexContainer container;
@@ -256,22 +284,136 @@ void LayoutFlex::Format()
 			return value + item.hypothetical_main_size;
 		});
 	}
-	// If the available main size is infinite, the main size becomes the accumulated outer size of all items of the widest line.
-	const float main_size_definite =
+
+	// If the available main size is infinite, the used main size becomes the accumulated outer size of all items of the widest line.
+	const float used_main_size =
 		main_available_size >= 0.f ? main_available_size :
 		std::max_element(container.lines.begin(), container.lines.end(), [](const FlexLine& a, const FlexLine& b) {
 			return a.accumulated_hypothetical_main_size < b.accumulated_hypothetical_main_size;
 		})->accumulated_hypothetical_main_size;
 
 
-	float cursor_cross_axis = 0.f;
-
-	// Resolve flexible lengths
+	// Resolve flexible lengths to find the used main size of all items.
 	for (FlexLine& line : container.lines)
 	{
-		const float available_flex_space = Math::Max(0.0f, main_size_definite - line.accumulated_hypothetical_main_size);
-		const float flex_space_per_item = available_flex_space / float(line.items.size());
+		const float available_flex_space = used_main_size - line.accumulated_hypothetical_main_size; // Possibly negative
 
+		const bool flex_mode_grow = (available_flex_space > 0.f);
+
+		auto FlexFactor = [flex_mode_grow](const FlexItem& item) {
+			return (flex_mode_grow ? item.flex_grow_factor : item.flex_shrink_factor);
+		};
+
+		// Initialize items and freeze inflexible items.
+		for (auto& item : line.items)
+		{
+			item.target_main_size = item.inner_flex_base_size;
+
+			if (FlexFactor(item) == 0.f 
+				|| (flex_mode_grow && item.flex_base_size > item.hypothetical_main_size)
+				|| (!flex_mode_grow && item.flex_base_size < item.hypothetical_main_size))
+			{
+				item.frozen = true;
+				item.target_main_size = item.hypothetical_main_size;
+			}
+		}
+
+		auto RemainingFreeSpace = [used_main_size, &line]() {
+			return used_main_size - std::accumulate(line.items.begin(), line.items.end(), 0.f, [](float value, const FlexItem& item) {
+				return value + (item.frozen ? item.target_main_size : item.flex_base_size);
+			});
+		};
+
+		const float initial_free_space = RemainingFreeSpace();
+
+		// Now iteratively distribute or shrink the size of all the items, until all the items are frozen.
+		while (!std::all_of(line.items.begin(), line.items.end(), [](const FlexItem& item) { return item.frozen; }))
+		{
+			float remaining_free_space = RemainingFreeSpace();
+
+			const float flex_factor_sum = std::accumulate(line.items.begin(), line.items.end(), 0.f, [&FlexFactor](float value, const FlexItem& item) {
+				return value + (item.frozen ? 0.0f : FlexFactor(item));
+			});
+
+			if (flex_factor_sum < 1.f)
+			{
+				const float scaled_initial_free_space = initial_free_space * flex_factor_sum;
+				if (Math::AbsoluteValue(scaled_initial_free_space) < Math::AbsoluteValue(remaining_free_space))
+					remaining_free_space = scaled_initial_free_space;
+			}
+
+			if (remaining_free_space != 0.f)
+			{
+				// Distribute free space proportionally to flex factors
+				if (flex_mode_grow)
+				{
+					for (auto& item : line.items)
+					{
+						if (!item.frozen)
+						{
+							const float distribute_ratio = item.flex_grow_factor / flex_factor_sum;
+							item.target_main_size = item.flex_base_size + distribute_ratio * remaining_free_space;
+						}
+					}
+				}
+				else
+				{
+					const float scaled_flex_shrink_factor_sum = std::accumulate(line.items.begin(), line.items.end(), 0.f, [](float value, const FlexItem& item) {
+						return value + (item.frozen ? 0.0f : item.flex_shrink_factor * item.inner_flex_base_size);
+					});
+
+					for (auto& item : line.items)
+					{
+						if (!item.frozen)
+						{
+							const float scaled_flex_shrink_factor = item.flex_shrink_factor * item.inner_flex_base_size;
+							const float distribute_ratio = scaled_flex_shrink_factor / scaled_flex_shrink_factor_sum;
+							item.target_main_size = item.flex_base_size - distribute_ratio * Math::AbsoluteValue(remaining_free_space);
+						}
+					}
+				}
+			}
+
+			// Clamp min/max violations
+			float total_minmax_violation = 0.f;
+
+			for (FlexItem& item : line.items)
+			{
+				if (!item.frozen)
+				{
+					const float inner_target_main_size = Math::Max(0.0f, item.target_main_size - item.sum_edges);
+					const float clamped_target_main_size = Math::Clamp(inner_target_main_size, item.min_size, item.max_size) + item.sum_edges;
+
+					const float violation_diff = clamped_target_main_size - item.target_main_size;
+					item.violation = (violation_diff > 0.0f ? FlexItem::Violation::Min : (violation_diff < 0.f ? FlexItem::Violation::Max : FlexItem::Violation::None));
+					item.target_main_size = clamped_target_main_size;
+					
+					total_minmax_violation += violation_diff;
+				}
+			}
+
+			for (FlexItem& item : line.items)
+			{
+				 if (total_minmax_violation > 0.0f)
+					item.frozen |= (item.violation == FlexItem::Violation::Min);
+				else if (total_minmax_violation < 0.0f)
+					item.frozen |= (item.violation == FlexItem::Violation::Max);
+				else
+					item.frozen = true;
+			}
+		}
+
+		// Now, each item's used main size is found!
+		for (FlexItem& item : line.items)
+			item.used_main_size = item.target_main_size;
+	}
+
+
+	// -- Old formatting code
+	float cursor_cross_axis = 0.f;
+
+	for (auto& line : container.lines)
+	{
 		float cursor_main_axis = 0.f;
 		float max_cross_size = 0;
 
@@ -280,7 +422,7 @@ void LayoutFlex::Format()
 			Box box;
 			LayoutDetails::BuildBox(box, flex_content_containing_block, item.element, false, 0.f);
 
-			float item_main_size = item.hypothetical_main_size - item.padding_border_a - item.padding_border_b + flex_space_per_item;
+			float item_main_size = item.used_main_size - item.sum_edges;
 			float item_main_offset = cursor_main_axis + box.GetEdge(Box::MARGIN, main_axis_horizontal ? Box::LEFT : Box::TOP);
 			Math::SnapToPixelGrid(item_main_offset, item_main_size);
 
@@ -300,15 +442,16 @@ void LayoutFlex::Format()
 			flex_content_overflow_size.y = Math::Max(flex_content_overflow_size.y, item_offset.y + cell_visible_overflow_size.y);
 
 			max_cross_size = Math::Max(max_cross_size, item.element->GetBox().GetSizeAcross(Box::VERTICAL, Box::MARGIN));
-			cursor_main_axis += item.hypothetical_main_size + flex_space_per_item;
+			cursor_main_axis += item_main_size + item.sum_edges;
 		}
 
 		cursor_cross_axis += max_cross_size;
 	}
 
+
 	const float cross_size_definite = cursor_cross_axis;
 
-	flex_resulting_content_size = Vector2f(main_size_definite, cross_size_definite);
+	flex_resulting_content_size = Vector2f(used_main_size, cross_size_definite);
 	if (!main_axis_horizontal)
 		std::swap(flex_resulting_content_size.x, flex_resulting_content_size.y);
 
