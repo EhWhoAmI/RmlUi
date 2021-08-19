@@ -51,7 +51,7 @@ public:
 	static Vector2f Format(Box& box, Vector2f min_size, Vector2f max_size, Vector2f containing_block, Element* element_flex);
 
 private:
-	LayoutFlex(Element* element_flex, Vector2f flex_available_content_size, Vector2f flex_content_containing_block, Vector2f flex_content_offset);
+	LayoutFlex(Element* element_flex, Vector2f flex_available_content_size, Vector2f flex_content_containing_block, Vector2f flex_content_offset, Vector2f flex_min_size, Vector2f flex_max_size);
 
 	// Format the flexbox.
 	void Format();
@@ -61,6 +61,8 @@ private:
 	const Vector2f flex_available_content_size;
 	const Vector2f flex_content_containing_block;
 	const Vector2f flex_content_offset;
+	const Vector2f flex_min_size;
+	const Vector2f flex_max_size;
 
 	// The final size of the table which will be determined by the size of its columns, rows, and spacing.
 	Vector2f flex_resulting_content_size;
