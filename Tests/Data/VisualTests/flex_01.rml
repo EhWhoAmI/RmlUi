@@ -10,12 +10,13 @@
 			border: 2dp #333;
 			flex-wrap: nowrap;
 			overflow: hidden;
+			justify-content: space-around;
 		}
 		#flex > * {
 			border: 2dp #d66;
 			background: #fff;
 			text-align: center;
-			flex: 1 1 auto;
+			flex: 0 1 auto;
 		}
 	</style>
 </head>

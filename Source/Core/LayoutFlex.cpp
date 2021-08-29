@@ -92,7 +92,7 @@ struct FlexItem {
 	struct Size {
 		bool auto_margin_a, auto_margin_b;
 		bool auto_size;
-		float sum_padding_border;
+		float margin_a, margin_b;
 		float sum_edges;           // Inner->outer size
 		float min_size, max_size;  // Inner size
 	};
@@ -115,7 +115,9 @@ struct FlexItem {
 	bool frozen;
 	Violation violation;
 	float target_main_size;       // Outer size
-	float used_main_size;         // Outer size
+	float used_main_size;         // Outer size (without auto margins)
+	float main_auto_margin_size_a, main_auto_margin_size_b;
+	float main_offset;
 
 	// Used for resolving cross size
 	float hypothetical_cross_size;  // Outer size
@@ -151,11 +153,12 @@ static void GetItemSizing(FlexItem::Size& destination, const ComputedFlexItemSiz
 	const float margin = margin_a + margin_b;
 
 	destination.auto_margin_a = (computed_size.margin_a.type == Style::Margin::Auto);
-	destination.auto_margin_a = (computed_size.margin_b.type == Style::Margin::Auto);
+	destination.auto_margin_b = (computed_size.margin_b.type == Style::Margin::Auto);
 
 	destination.auto_size = (computed_size.size.type == Style::LengthPercentageAuto::Auto);
 
-	destination.sum_padding_border = padding_border;
+	destination.margin_a = margin_a;
+	destination.margin_b = margin_b;
 	destination.sum_edges = padding_border + margin;
 
 	destination.min_size = ResolveValue(computed_size.min_size, base_value);
@@ -186,7 +189,7 @@ void LayoutFlex::Format()
 	const float main_size_base_value = (main_available_size < 0.0f ? 0.0f : main_available_size);
 	const float cross_size_base_value = (cross_available_size < 0.0f ? 0.0f : cross_available_size);
 
-	// Build a list of all flex items with base size information.
+	// -- Build a list of all flex items with base size information --
 	Vector<FlexItem> items;
 
 	const int num_flex_children = element_flex->GetNumChildren();
@@ -226,18 +229,20 @@ void LayoutFlex::Format()
 		item.flex_grow_factor = computed.flex_grow;
 		item.align_self = computed.align_self;
 
+		const float sum_padding_border = item.main.sum_edges - (item.main.margin_a + item.main.margin_b);
+
 		// Find the flex base size (possibly negative when using border box sizing)
 		if (computed.flex_basis.type != Style::FlexBasis::Auto)
 		{
 			item.inner_flex_base_size = ResolveValue(computed.flex_basis, main_size_base_value);
 			if (computed.box_sizing == Style::BoxSizing::BorderBox)
-				item.inner_flex_base_size -= item.main.sum_padding_border;
+				item.inner_flex_base_size -= sum_padding_border;
 		}
 		else if (!item.main.auto_size)
 		{
 			item.inner_flex_base_size = ResolveValue(item_main_size, main_size_base_value);
 			if (computed.box_sizing == Style::BoxSizing::BorderBox)
-				item.inner_flex_base_size -= item.main.sum_padding_border;
+				item.inner_flex_base_size -= sum_padding_border;
 		}
 		else if (main_axis_horizontal)
 		{
@@ -272,7 +277,7 @@ void LayoutFlex::Format()
 		return;
 	}
 
-	// Collect the items into lines.
+	// -- Collect the items into lines --
 	FlexContainer container;
 
 	if (flex_single_line)
@@ -324,7 +329,7 @@ void LayoutFlex::Format()
 			return a.accumulated_hypothetical_main_size < b.accumulated_hypothetical_main_size;
 		})->accumulated_hypothetical_main_size;
 
-
+	// -- Determine main size --
 	// Resolve flexible lengths to find the used main size of all items.
 	for (FlexLine& line : container.lines)
 	{
@@ -436,14 +441,99 @@ void LayoutFlex::Format()
 		}
 
 		// Now, each item's used main size is found!
-		// TODO: Find a strategy for rounding to pixels while distributing all the space. Should be done
-		//   before determining cross size, since we depend on the size there.
 		for (FlexItem& item : line.items)
 			item.used_main_size = item.target_main_size;
 	}
 
 
-	// Determine cross size
+	// -- Align main axis (§9.5) -- 
+	// Main alignment is done before cross sizing. Due to rounding to the pixel grid, the main size can
+	// change slightly after main alignment/offseting. Also, the cross sizing depends on the main sizing
+	// so doing it in this order ensures no surprises (overflow/wrapping issues) due to pixel rounding.
+	for (FlexLine& line : container.lines)
+	{
+		RMLUI_ASSERT(!line.items.empty());
+		const float remaining_free_space = used_main_size - std::accumulate(line.items.begin(), line.items.end(), 0.f, [](float value, const FlexItem& item) {
+			return value + item.used_main_size;
+		});
+
+		if (remaining_free_space > 0.0f)
+		{
+			const int num_auto_margins = std::accumulate(line.items.begin(), line.items.end(), 0, [](int value, const FlexItem& item) {
+				return value + int(item.main.auto_margin_a) + int(item.main.auto_margin_b);
+			});
+
+			if (num_auto_margins > 0)
+			{
+				// Distribute the remaining space to the auto margins.
+				const float space_per_auto_margin = remaining_free_space / float(num_auto_margins);
+				for (FlexItem& item : line.items)
+				{
+					if (item.main.auto_margin_a)
+						item.main_auto_margin_size_a = space_per_auto_margin;
+					if (item.main.auto_margin_b)
+						item.main_auto_margin_size_b = space_per_auto_margin;
+				}
+			}
+			else
+			{
+				// Distribute the remaining space based on the 'justify-content' property.
+				using Style::JustifyContent;
+				const int num_items = int(line.items.size());
+
+				switch (computed_flex.justify_content)
+				{
+				case JustifyContent::SpaceBetween:
+					if (num_items > 1)
+					{
+						const float space_per_edge = remaining_free_space / float(2 * num_items - 2);
+						for (int i = 0; i < num_items; i++)
+						{
+							FlexItem& item = line.items[i];
+							if (i > 0)
+								item.main_auto_margin_size_a = space_per_edge;
+							if (i < num_items - 1)
+								item.main_auto_margin_size_b = space_per_edge;
+						}
+						break;
+					}
+					//-fallthrough
+				case JustifyContent::FlexStart:
+					line.items.back().main_auto_margin_size_b = remaining_free_space;
+					break;
+				case JustifyContent::FlexEnd:
+					line.items.front().main_auto_margin_size_a = remaining_free_space;
+					break;
+				case JustifyContent::Center:
+					line.items.front().main_auto_margin_size_a = 0.5f * remaining_free_space;
+					line.items.back().main_auto_margin_size_b = 0.5f * remaining_free_space;
+					break;
+				case JustifyContent::SpaceAround:
+				{
+					const float space_per_edge = remaining_free_space / float(2 * num_items);
+					for (FlexItem& item : line.items)
+					{
+						item.main_auto_margin_size_a = space_per_edge;
+						item.main_auto_margin_size_b = space_per_edge;
+					}
+				}
+				break;
+				}
+			}
+		}
+
+		// Now find the offset and snap the outer edges to the pixel grid.
+		float cursor = 0.f;
+		for (FlexItem& item : line.items)
+		{
+			item.main_offset = cursor + item.main.margin_a + item.main_auto_margin_size_a;
+			cursor = item.main_offset + item.used_main_size + item.main.margin_b + item.main_auto_margin_size_b;
+			Math::SnapToPixelGrid(item.main_offset, item.used_main_size);
+		}
+	}
+
+
+	// -- Determine cross size (§9.4) --
 	// First, determine the cross size of each item, format it if necessary.
 	for (FlexLine& line : container.lines)
 	{
@@ -545,7 +635,6 @@ void LayoutFlex::Format()
 
 
 
-
 	// -- Old formatting code
 	float cursor_cross_axis = 0.f;
 
@@ -559,8 +648,8 @@ void LayoutFlex::Format()
 			LayoutDetails::BuildBox(box, flex_content_containing_block, item.element, false, 0.f);
 
 			float item_main_size = item.used_main_size - item.main.sum_edges;
-			float item_main_offset = cursor_main_axis + box.GetEdge(Box::MARGIN, main_axis_horizontal ? Box::LEFT : Box::TOP);
-			Math::SnapToPixelGrid(item_main_offset, item_main_size);
+			float item_main_offset = item.main_offset;// cursor_main_axis + box.GetEdge(Box::MARGIN, main_axis_horizontal ? Box::LEFT : Box::TOP);
+			//Math::SnapToPixelGrid(item_main_offset, item_main_size);
 			
 			float item_cross_size = item.used_cross_size - item.cross.sum_edges;
 			float item_cross_offset = cursor_cross_axis + box.GetEdge(Box::MARGIN, main_axis_horizontal ? Box::TOP : Box::LEFT);
