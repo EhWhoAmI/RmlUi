@@ -436,6 +436,8 @@ void LayoutFlex::Format()
 		}
 
 		// Now, each item's used main size is found!
+		// TODO: Find a strategy for rounding to pixels while distributing all the space. Should be done
+		//   before determining cross size, since we depend on the size there.
 		for (FlexItem& item : line.items)
 			item.used_main_size = item.target_main_size;
 	}
@@ -451,11 +453,13 @@ void LayoutFlex::Format()
 			Box box;
 			LayoutDetails::BuildBox(box, flex_content_containing_block, item.element, false, 0.0f);
 			const Vector2f content_size = box.GetSize();
+			const float used_main_size_inner = item.used_main_size - item.main.sum_edges;
 
 			if (main_axis_horizontal)
 			{
 				if (content_size.y < 0.0f)
 				{
+					box.SetContent(Vector2f(used_main_size_inner, content_size.y));
 					LayoutEngine::FormatElement(item.element, flex_content_containing_block, &box);
 					item.hypothetical_cross_size = item.element->GetBox().GetSizeAcross(Box::VERTICAL, Box::MARGIN);
 				}
@@ -468,6 +472,7 @@ void LayoutFlex::Format()
 			{
 				if (content_size.x < 0.0f || item.cross.auto_size)
 				{
+					box.SetContent(Vector2f(content_size.x, used_main_size_inner));
 					item.hypothetical_cross_size = LayoutDetails::GetShrinkToFitWidth(item.element, flex_content_containing_block) + item.cross.sum_edges;
 				}
 				else
