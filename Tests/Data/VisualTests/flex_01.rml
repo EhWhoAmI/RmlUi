@@ -11,6 +11,8 @@
 			flex-wrap: nowrap;
 			overflow: hidden;
 			justify-content: space-around;
+			align-items: flex-end;
+			flex-wrap: wrap;
 		}
 		#flex > * {
 			border: 2dp #d66;
@@ -24,7 +26,7 @@
 <body>
 <div id="flex">
 	<div>Hello</div>
-	<div>big world!</div>
+	<div>big<br/>world!</div>
 	<div>LOOOOOOOOOOOOOOOOOOOOONG</div>
 </div>
 <handle size_target="#document"/>

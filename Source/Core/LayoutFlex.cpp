@@ -122,12 +122,15 @@ struct FlexItem {
 	// Used for resolving cross size
 	float hypothetical_cross_size;  // Outer size
 	float used_cross_size;          // Outer size
+	float cross_offset;
 };
 
 struct FlexLine {
 	Vector<FlexItem> items;
 	float accumulated_hypothetical_main_size;
 	float cross_size;
+	float cross_spacing_a, cross_spacing_b;
+	float cross_offset;
 };
 
 struct FlexContainer {
@@ -228,6 +231,14 @@ void LayoutFlex::Format()
 		item.flex_shrink_factor = computed.flex_shrink;
 		item.flex_grow_factor = computed.flex_grow;
 		item.align_self = computed.align_self;
+
+		static_assert(int(Style::AlignSelf::FlexStart) == int(Style::AlignItems::FlexStart) + 1 &&
+						  int(Style::AlignSelf::Stretch) == int(Style::AlignItems::Stretch) + 1,
+			"It is assumed below that align items is a shifted version (no auto value) of align self.");
+
+		// Use the container's align-items property if align-self is auto.
+		if (item.align_self == Style::AlignSelf::Auto)
+			item.align_self = static_cast<Style::AlignSelf>(static_cast<int>(computed_flex.align_items) + 1);
 
 		const float sum_padding_border = item.main.sum_edges - (item.main.margin_a + item.main.margin_b);
 
@@ -452,7 +463,6 @@ void LayoutFlex::Format()
 	// so doing it in this order ensures no surprises (overflow/wrapping issues) due to pixel rounding.
 	for (FlexLine& line : container.lines)
 	{
-		RMLUI_ASSERT(!line.items.empty());
 		const float remaining_free_space = used_main_size - std::accumulate(line.items.begin(), line.items.end(), 0.f, [](float value, const FlexItem& item) {
 			return value + item.used_main_size;
 		});
@@ -613,14 +623,12 @@ void LayoutFlex::Format()
 		}
 	}
 
-	const bool stretch_lines = (computed_flex.align_items == Style::AlignItems::Stretch);
-
 	// Determine the used cross size of items.
 	for (FlexLine& line : container.lines)
 	{
 		for (FlexItem& item : line.items)
 		{
-			const bool stretch_item = (item.align_self == Style::AlignSelf::Stretch || (item.align_self == Style::AlignSelf::Auto && stretch_lines));
+			const bool stretch_item = (item.align_self == Style::AlignSelf::Stretch);
 			if (stretch_item && item.cross.auto_size && !item.cross.auto_margin_a && !item.cross.auto_margin_b)
 			{
 				item.used_cross_size = Math::Clamp(line.cross_size - item.cross.sum_edges, item.cross.min_size, item.cross.max_size) + item.cross.sum_edges;
@@ -633,27 +641,139 @@ void LayoutFlex::Format()
 		}
 	}
 
-
-
-	// -- Old formatting code
-	float cursor_cross_axis = 0.f;
-
-	for (auto& line : container.lines)
+	// -- Align cross axis (§9.6) --
+	for (FlexLine& line : container.lines)
 	{
-		float cursor_main_axis = 0.f;
-
-		for (auto& item : line.items)
+		for (FlexItem& item : line.items)
 		{
+			const float remaining_space = line.cross_size - item.used_cross_size;
+
+			item.cross_offset = item.cross.margin_a;
+
+			if (remaining_space > 0.f)
+			{
+				const int num_auto_margins = int(item.cross.auto_margin_a) + int(item.cross.auto_margin_b);
+				if (num_auto_margins > 0)
+				{
+					const float auto_offset_a = remaining_space / float(num_auto_margins);
+					item.cross_offset = item.cross.margin_a + auto_offset_a;
+				}
+				else
+				{
+					using Style::AlignSelf;
+					const AlignSelf align_self = item.align_self;
+
+					switch (align_self)
+					{
+					case AlignSelf::Auto:
+						// Never encountered here: should already have been replaced by container's align-items property.
+						RMLUI_ERROR;
+						break;
+					case AlignSelf::FlexStart:
+						// Do nothing
+						break;
+					case AlignSelf::FlexEnd:
+						item.cross_offset = item.cross.margin_a + remaining_space;
+						break;
+					case AlignSelf::Center:
+						item.cross_offset = item.cross.margin_a + 0.5f * remaining_space;
+						break;
+					case AlignSelf::Baseline:
+						RMLUI_ERRORMSG("Not yet implemented");
+						break;
+					case AlignSelf::Stretch:
+						// Handled above
+						break;
+					}
+				}
+			}
+		}
+
+		for (FlexItem& item : line.items)
+			Math::SnapToPixelGrid(item.cross_offset, item.used_cross_size);
+	}
+
+	const float accumulated_lines_cross_size = std::accumulate(
+		container.lines.begin(), container.lines.end(), 0.f, [](float value, const FlexLine& line) { return value + line.cross_size; });
+
+	// If the available cross size is infinite, the used cross size becomes the accumulated line cross size.
+	const float used_cross_size = cross_available_size >= 0.f ? cross_available_size : accumulated_lines_cross_size;
+
+	// Align the lines along the cross-axis.
+	{
+		const float remaining_free_space = used_cross_size - accumulated_lines_cross_size;
+		const int num_lines = int(container.lines.size());
+
+		if (remaining_free_space > 0.f)
+		{
+			using Style::AlignContent;
+
+			switch (computed_flex.align_content)
+			{
+			case AlignContent::SpaceBetween:
+				if (num_lines > 1)
+				{
+					const float space_per_edge = remaining_free_space / float(2 * num_lines - 2);
+					for (int i = 0; i < num_lines; i++)
+					{
+						FlexLine& line = container.lines[i];
+						if (i > 0)
+							line.cross_spacing_a = space_per_edge;
+						if (i < num_lines - 1)
+							line.cross_spacing_b = space_per_edge;
+					}
+				}
+				//-fallthrough
+			case AlignContent::FlexStart:
+				container.lines.back().cross_spacing_b = remaining_free_space;
+				break;
+			case AlignContent::FlexEnd:
+				container.lines.front().cross_spacing_a = remaining_free_space;
+				break;
+			case AlignContent::Center:
+				container.lines.front().cross_spacing_a = 0.5f * remaining_free_space;
+				container.lines.back().cross_spacing_b = 0.5f * remaining_free_space;
+				break;
+			case AlignContent::SpaceAround:
+			{
+				const float space_per_edge = remaining_free_space / float(2 * num_lines);
+				for (FlexLine& line : container.lines)
+				{
+					line.cross_spacing_a = space_per_edge;
+					line.cross_spacing_b = space_per_edge;
+				}
+			}
+				break;
+			case AlignContent::Stretch:
+				// Handled above.
+				break;
+			}
+		}
+
+		// Now find the offset and snap the line edges to the pixel grid.
+		float cursor = 0.f;
+		for (FlexLine& line : container.lines)
+		{
+			line.cross_offset = cursor + line.cross_spacing_a;
+			cursor = line.cross_offset + line.cross_size + line.cross_spacing_b;
+			Math::SnapToPixelGrid(line.cross_offset, line.cross_size);
+		}
+	}
+
+	// -- Format items --
+	for (const FlexLine& line : container.lines)
+	{
+		for (const FlexItem& item : line.items)
+		{
+			// TODO: Store box from earlier?
 			Box box;
 			LayoutDetails::BuildBox(box, flex_content_containing_block, item.element, false, 0.f);
 
 			float item_main_size = item.used_main_size - item.main.sum_edges;
-			float item_main_offset = item.main_offset;// cursor_main_axis + box.GetEdge(Box::MARGIN, main_axis_horizontal ? Box::LEFT : Box::TOP);
-			//Math::SnapToPixelGrid(item_main_offset, item_main_size);
+			float item_main_offset = item.main_offset;
 			
 			float item_cross_size = item.used_cross_size - item.cross.sum_edges;
-			float item_cross_offset = cursor_cross_axis + box.GetEdge(Box::MARGIN, main_axis_horizontal ? Box::TOP : Box::LEFT);
-			Math::SnapToPixelGrid(item_cross_offset, item_cross_size);
+			float item_cross_offset = line.cross_offset + item.cross_offset;
 
 			box.SetContent(main_axis_horizontal ? Vector2f(item_main_size, item_cross_size) : Vector2f(item_cross_size, item_main_size));
 
@@ -668,21 +788,10 @@ void LayoutFlex::Format()
 			// The cell contents may overflow, propagate this to the flex container.
 			flex_content_overflow_size.x = Math::Max(flex_content_overflow_size.x, item_offset.x + cell_visible_overflow_size.x);
 			flex_content_overflow_size.y = Math::Max(flex_content_overflow_size.y, item_offset.y + cell_visible_overflow_size.y);
-
-			cursor_main_axis += item_main_size + item.main.sum_edges;
 		}
-
-		cursor_cross_axis += line.cross_size;
 	}
 
-
-	const float cross_size_definite = cursor_cross_axis;
-
-	flex_resulting_content_size = Vector2f(used_main_size, cross_size_definite);
-	if (!main_axis_horizontal)
-		std::swap(flex_resulting_content_size.x, flex_resulting_content_size.y);
-
+	flex_resulting_content_size = main_axis_horizontal ? Vector2f(used_main_size, used_cross_size) : Vector2f(used_cross_size, used_main_size);
 }
-
 
 } // namespace Rml
