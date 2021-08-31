@@ -679,7 +679,7 @@ void LayoutFlex::Format()
 						item.cross_offset = item.cross.margin_a + 0.5f * remaining_space;
 						break;
 					case AlignSelf::Baseline:
-						RMLUI_ERRORMSG("Not yet implemented");
+						Log::Message(Log::LT_WARNING, "Flexbox baseline not yet implemented");
 						break;
 					case AlignSelf::Stretch:
 						// Handled above
