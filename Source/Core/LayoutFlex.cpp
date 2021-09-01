@@ -147,7 +147,7 @@ static void GetEdgeSizes(float& margin_a, float& margin_b, float& padding_border
 	padding_border_b = Math::Max(0.0f, ResolveValue(computed_size.padding_b, base_value)) + Math::Max(0.0f, computed_size.border_b);
 }
 
-static void GetItemSizing(FlexItem::Size& destination, const ComputedFlexItemSize& computed_size, const float base_value)
+static void GetItemSizing(FlexItem::Size& destination, const ComputedFlexItemSize& computed_size, const float base_value, const bool direction_reverse)
 {
 	float margin_a, margin_b, padding_border_a, padding_border_b;
 	GetEdgeSizes(margin_a, margin_b, padding_border_a, padding_border_b, computed_size, base_value);
@@ -173,6 +173,12 @@ static void GetItemSizing(FlexItem::Size& destination, const ComputedFlexItemSiz
 		if (destination.max_size < FLT_MAX)
 			destination.max_size = Math::Max(0.0f, destination.max_size - padding_border);
 	}
+
+	if (direction_reverse)
+	{
+		std::swap(destination.auto_margin_a, destination.auto_margin_b);
+		std::swap(destination.margin_a, destination.margin_b);
+	}
 }
 
 void LayoutFlex::Format()
@@ -180,7 +186,9 @@ void LayoutFlex::Format()
 	const ComputedValues& computed_flex = element_flex->GetComputedValues();
 	const Style::FlexDirection direction = computed_flex.flex_direction;
 	const bool main_axis_horizontal = (direction == Style::FlexDirection::Row || direction == Style::FlexDirection::RowReverse);
+	const bool direction_reverse = (direction == Style::FlexDirection::RowReverse || direction == Style::FlexDirection::ColumnReverse);
 	const bool flex_single_line = (computed_flex.flex_wrap == Style::FlexWrap::Nowrap);
+	const bool wrap_reverse = (computed_flex.flex_wrap == Style::FlexWrap::WrapReverse);
 
 	const float main_available_size = (main_axis_horizontal ? flex_available_content_size.x : flex_available_content_size.y);
 	const float cross_available_size = (!main_axis_horizontal ? flex_available_content_size.x : flex_available_content_size.y);
@@ -222,8 +230,8 @@ void LayoutFlex::Format()
 			// TODO: Not very efficient.
 			ComputedFlexItemSize computed_cross_size = !main_axis_horizontal ? BuildComputedColumnSize(computed) : BuildComputedRowSize(computed);
 
-			GetItemSizing(item.main, computed_main_size, main_size_base_value);
-			GetItemSizing(item.cross, computed_cross_size, cross_size_base_value);
+			GetItemSizing(item.main, computed_main_size, main_size_base_value, direction_reverse);
+			GetItemSizing(item.cross, computed_cross_size, cross_size_base_value, wrap_reverse);
 
 			item_main_size = computed_main_size.size;
 		}
@@ -355,7 +363,7 @@ void LayoutFlex::Format()
 		// Initialize items and freeze inflexible items.
 		for (FlexItem& item : line.items)
 		{
-			item.target_main_size = item.inner_flex_base_size;
+			item.target_main_size = item.flex_base_size;
 
 			if (FlexFactor(item) == 0.f 
 				|| (flex_mode_grow && item.flex_base_size > item.hypothetical_main_size)
@@ -533,11 +541,16 @@ void LayoutFlex::Format()
 		}
 
 		// Now find the offset and snap the outer edges to the pixel grid.
-		float cursor = 0.f;
+		const float reverse_offset = used_main_size - line.items[0].used_main_size + line.items[0].main.margin_a + line.items[0].main.margin_b;
+		float cursor = 0.0f;
 		for (FlexItem& item : line.items)
 		{
 			item.main_offset = cursor + item.main.margin_a + item.main_auto_margin_size_a;
-			cursor = item.main_offset + item.used_main_size + item.main.margin_b + item.main_auto_margin_size_b;
+			cursor += item.used_main_size + item.main_auto_margin_size_a + item.main_auto_margin_size_b;
+
+			if (direction_reverse)
+				item.main_offset = reverse_offset - item.main_offset;
+
 			Math::SnapToPixelGrid(item.main_offset, item.used_main_size);
 		}
 	}
@@ -751,11 +764,16 @@ void LayoutFlex::Format()
 		}
 
 		// Now find the offset and snap the line edges to the pixel grid.
+		const float reverse_offset = used_cross_size - container.lines[0].cross_size;
 		float cursor = 0.f;
 		for (FlexLine& line : container.lines)
 		{
 			line.cross_offset = cursor + line.cross_spacing_a;
 			cursor = line.cross_offset + line.cross_size + line.cross_spacing_b;
+
+			if (wrap_reverse)
+				line.cross_offset = reverse_offset - line.cross_offset;
+
 			Math::SnapToPixelGrid(line.cross_offset, line.cross_size);
 		}
 	}
