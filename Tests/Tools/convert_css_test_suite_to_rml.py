@@ -283,7 +283,7 @@ def process_file(in_file):
 		if re.search(r'@font-face|font:|ahem', line, flags = re.IGNORECASE):
 			print("File '{}' skipped since it uses special fonts.".format(in_file))
 			return False
-		if re.search(r'(direction:[^;]*[;"])|(content:[^;]*[;"])|(outline:[^;]*[;"])|(quote:[^;]*[;"])|(border-spacing:[^;]*[;"])|(border-collapse:[^;]*[;"])|(background:[^;]*[;"])', line, flags = re.IGNORECASE)\
+		if re.search(r'((^-)direction:[^;]*[;"])|((^-)content:[^;]*[;"])|(outline:[^;]*[;"])|(quote:[^;]*[;"])|(border-spacing:[^;]*[;"])|(border-collapse:[^;]*[;"])|(background:[^;]*[;"])', line, flags = re.IGNORECASE)\
 			or re.search(r'(font-variant:[^;]*[;"])|(font-kerning:[^;]*[;"])|(font-feature-settings:[^;]*[;"])|(background-image:[^;]*[;"])|(caption-side:[^;]*[;"])|(clip:[^;]*[;"])|(page-break-inside:[^;]*[;"])|(word-spacing:[^;]*[;"])', line, flags = re.IGNORECASE)\
 			or re.search(r'(writing-mode:[^;]*[;"])|(text-orientation:[^;]*[;"])|(text-indent:[^;]*[;"])|(page-break-after:[^;]*[;"])|(page-break-before:[^;]*[;"])|(column[^:]*:[^;]*[;"])|(empty-cells:[^;]*[;"])', line, flags = re.IGNORECASE)\
 			or re.search(r'(aspect-ratio:[^;]*[;"])|(flex-basis:[^;]*[;"])|(order:[^;]*[;"])', line, flags = re.IGNORECASE):
