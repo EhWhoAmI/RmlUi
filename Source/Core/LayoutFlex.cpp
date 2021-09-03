@@ -185,6 +185,7 @@ void LayoutFlex::Format()
 {
 	const ComputedValues& computed_flex = element_flex->GetComputedValues();
 	const Style::FlexDirection direction = computed_flex.flex_direction;
+
 	const bool main_axis_horizontal = (direction == Style::FlexDirection::Row || direction == Style::FlexDirection::RowReverse);
 	const bool direction_reverse = (direction == Style::FlexDirection::RowReverse || direction == Style::FlexDirection::ColumnReverse);
 	const bool flex_single_line = (computed_flex.flex_wrap == Style::FlexWrap::Nowrap);
@@ -193,8 +194,13 @@ void LayoutFlex::Format()
 	const float main_available_size = (main_axis_horizontal ? flex_available_content_size.x : flex_available_content_size.y);
 	const float cross_available_size = (!main_axis_horizontal ? flex_available_content_size.x : flex_available_content_size.y);
 
+	const float main_min_size = (main_axis_horizontal ? flex_min_size.x : flex_min_size.y);
+	const float main_max_size = (main_axis_horizontal ? flex_max_size.x : flex_max_size.y);
+	const float cross_min_size = (main_axis_horizontal ? flex_min_size.y : flex_min_size.x);
+	const float cross_max_size = (main_axis_horizontal ? flex_max_size.y : flex_max_size.x);
+
 	// For the purpose of placing items we make infinite size a big value.
-	const float main_size = (main_available_size < 0.0f ? FLT_MAX : main_available_size);
+	const float main_wrap_size = Math::Clamp(main_available_size < 0.0f ? FLT_MAX : main_available_size, main_min_size, main_max_size);
 
 	// For the purpose of resolving lengths, infinite main size becomes zero.
 	const float main_size_base_value = (main_available_size < 0.0f ? 0.0f : main_available_size);
@@ -313,7 +319,7 @@ void LayoutFlex::Format()
 		{
 			cursor += item.hypothetical_main_size;
 
-			if (!line_items.empty() && cursor > main_size)
+			if (!line_items.empty() && cursor > main_wrap_size)
 			{
 				// Break into new line.
 				container.lines.push_back(FlexLine{ std::move(line_items) });
@@ -612,12 +618,7 @@ void LayoutFlex::Format()
 			line.cross_size = Math::Max(0.0f, largest_hypothetical_cross_size);
 
 			if (flex_single_line)
-			{
-				if (main_axis_horizontal)
-					line.cross_size = Math::Clamp(line.cross_size, flex_min_size.x, flex_max_size.x);
-				else
-					line.cross_size = Math::Clamp(line.cross_size, flex_min_size.y, flex_max_size.y);
-			}
+				line.cross_size = Math::Clamp(line.cross_size, cross_min_size, cross_max_size);
 		}
 	}
 

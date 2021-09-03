@@ -11,6 +11,7 @@
         display: flex;
         margin:20px;
         background-color: #333;
+        max-height: 210px;
     }
     .flex-item{
         width:50px;
