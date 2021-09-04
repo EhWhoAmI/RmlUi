@@ -104,7 +104,7 @@ struct FlexItem {
 	Size cross;
 	float flex_shrink_factor;
 	float flex_grow_factor;
-	Style::AlignSelf align_self;
+	Style::AlignSelf align_self;  // 'Auto' is replaced by container's 'align-items' value
 
 	float inner_flex_base_size;   // Inner size
 	float flex_base_size;         // Outer size
@@ -122,7 +122,7 @@ struct FlexItem {
 	// Used for resolving cross size
 	float hypothetical_cross_size;  // Outer size
 	float used_cross_size;          // Outer size
-	float cross_offset;
+	float cross_offset;             // Offset within line
 };
 
 struct FlexLine {
@@ -580,11 +580,11 @@ void LayoutFlex::Format()
 				{
 					box.SetContent(Vector2f(used_main_size_inner, content_size.y));
 					LayoutEngine::FormatElement(item.element, flex_content_containing_block, &box);
-					item.hypothetical_cross_size = item.element->GetBox().GetSizeAcross(Box::VERTICAL, Box::MARGIN);
+					item.hypothetical_cross_size = item.element->GetBox().GetSize().y + item.cross.sum_edges;
 				}
 				else
 				{
-					item.hypothetical_cross_size = box.GetSizeAcross(Box::VERTICAL, Box::MARGIN);
+					item.hypothetical_cross_size = content_size.y + item.cross.sum_edges;
 				}
 			}
 			else
@@ -596,7 +596,7 @@ void LayoutFlex::Format()
 				}
 				else
 				{
-					item.hypothetical_cross_size = box.GetSizeAcross(Box::HORIZONTAL, Box::MARGIN);
+					item.hypothetical_cross_size = content_size.x + item.cross.sum_edges;
 				}
 			}
 		}
@@ -669,8 +669,8 @@ void LayoutFlex::Format()
 				const int num_auto_margins = int(item.cross.auto_margin_a) + int(item.cross.auto_margin_b);
 				if (num_auto_margins > 0)
 				{
-					const float auto_offset_a = remaining_space / float(num_auto_margins);
-					item.cross_offset = item.cross.margin_a + auto_offset_a;
+					const float space_per_auto_margin = remaining_space / float(num_auto_margins);
+					item.cross_offset = item.cross.margin_a + (item.cross.auto_margin_a ? space_per_auto_margin : 0.f);
 				}
 				else
 				{
@@ -701,8 +701,15 @@ void LayoutFlex::Format()
 					}
 				}
 			}
+
+			if (wrap_reverse)
+			{
+				const float reverse_offset = line.cross_size - item.used_cross_size + item.cross.margin_a + item.cross.margin_b;
+				item.cross_offset = reverse_offset - item.cross_offset;
+			}
 		}
 
+		// Snap the outer item cross edges to the pixel grid.
 		for (FlexItem& item : line.items)
 			Math::SnapToPixelGrid(item.cross_offset, item.used_cross_size);
 	}
