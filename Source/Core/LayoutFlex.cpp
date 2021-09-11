@@ -89,6 +89,7 @@ LayoutFlex::LayoutFlex(Element* element_flex, Vector2f flex_available_content_si
 using ComputedFlexItemSize = ComputedTrackSize;
 
 struct FlexItem {
+	// In the following, suffix '_a' means flex start edge while '_b' means flex end edge.
 	struct Size {
 		bool auto_margin_a, auto_margin_b;
 		bool auto_size;
@@ -128,7 +129,7 @@ struct FlexItem {
 struct FlexLine {
 	Vector<FlexItem> items;
 	float accumulated_hypothetical_main_size;
-	float cross_size;
+	float cross_size; // Excludes line spacing
 	float cross_spacing_a, cross_spacing_b;
 	float cross_offset;
 };
@@ -547,17 +548,16 @@ void LayoutFlex::Format()
 		}
 
 		// Now find the offset and snap the outer edges to the pixel grid.
-		const float reverse_offset = used_main_size - line.items[0].used_main_size + line.items[0].main.margin_a + line.items[0].main.margin_b;
 		float cursor = 0.0f;
 		for (FlexItem& item : line.items)
 		{
-			item.main_offset = cursor + item.main.margin_a + item.main_auto_margin_size_a;
-			cursor += item.used_main_size + item.main_auto_margin_size_a + item.main_auto_margin_size_b;
-
 			if (direction_reverse)
-				item.main_offset = reverse_offset - item.main_offset;
+				item.main_offset = used_main_size - (cursor + item.used_main_size + item.main_auto_margin_size_a - item.main.margin_b);
+			else
+				item.main_offset = cursor + item.main.margin_a + item.main_auto_margin_size_a;
 
 			Math::SnapToPixelGrid(item.main_offset, item.used_main_size);
+			cursor += item.used_main_size + item.main_auto_margin_size_a + item.main_auto_margin_size_b;
 		}
 	}
 
@@ -772,16 +772,15 @@ void LayoutFlex::Format()
 		}
 
 		// Now find the offset and snap the line edges to the pixel grid.
-		const float reverse_offset = used_cross_size - container.lines[0].cross_size;
 		float cursor = 0.f;
 		for (FlexLine& line : container.lines)
 		{
-			line.cross_offset = cursor + line.cross_spacing_a;
-			cursor = line.cross_offset + line.cross_size + line.cross_spacing_b;
-
 			if (wrap_reverse)
-				line.cross_offset = reverse_offset - line.cross_offset;
+				line.cross_offset = used_cross_size - (cursor + line.cross_spacing_a + line.cross_size);
+			else
+				line.cross_offset = cursor + line.cross_spacing_a;
 
+			cursor += line.cross_spacing_a + line.cross_size + line.cross_spacing_b;
 			Math::SnapToPixelGrid(line.cross_offset, line.cross_size);
 		}
 	}
@@ -791,9 +790,9 @@ void LayoutFlex::Format()
 	{
 		for (const FlexItem& item : line.items)
 		{
-			// TODO: Store box from earlier?
+			// TODO: We really only care about padding and border from BuildBox, everything else is ignored. Store box or padding/border from earlier?
 			Box box;
-			LayoutDetails::BuildBox(box, flex_content_containing_block, item.element, false, 0.f);
+			LayoutDetails::BuildBox(box, flex_content_containing_block, item.element, true, 0.f);
 
 			float item_main_size = item.used_main_size - item.main.sum_edges;
 			float item_main_offset = item.main_offset;
