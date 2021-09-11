@@ -236,6 +236,13 @@ def process_file(in_file):
 		line = re.sub(r'(line-height:)\s*normal', r'\1 1.2em', line, flags = re.IGNORECASE)
 		line = re.sub(r'cyan', r'aqua', line, flags = re.IGNORECASE)
 
+		line = re.sub(r'flex: none;', r'flex: 0 0 auto;', line, flags = re.IGNORECASE)
+		line = re.sub(r'align-content:\s*(start|end)', r'align-content: flex-\1', line, flags = re.IGNORECASE)
+		line = re.sub(r'align-content:\s*space-evenly', r'align-content: space-around', line, flags = re.IGNORECASE)
+		line = re.sub(r'justify-content:\s*space-evenly', r'justify-content: space-around', line, flags = re.IGNORECASE)
+		line = re.sub(r'justify-content:\s*left', r'justify-content: flex-start', line, flags = re.IGNORECASE)
+		line = re.sub(r'justify-content:\s*right', r'justify-content: flex-end', line, flags = re.IGNORECASE)
+
 		if re.search(r'background:[^;}\"]*fixed', line, flags = re.IGNORECASE):
 			print("File '{}' skipped since it uses unsupported background.".format(in_file))
 			return False
@@ -253,6 +260,17 @@ def process_file(in_file):
 		new_line += line[prev_end:]
 		line = new_line
 
+		prev_end = 0
+		new_line = ""
+		for match in re.finditer(r'calc\(\s*(\d+)(\w{1,3})\s*/\s*(\d)\s*\)', line, flags = re.IGNORECASE):
+			num = match.group(1)
+			unit = match.group(2)
+			den = match.group(3)
+			calc_result = "{}{}".format(float(num) / float(den), unit)
+			new_line += line[prev_end:match.start()] + calc_result
+			prev_end = match.end()
+		new_line += line[prev_end:]
+		line = new_line
 
 		line = border_find_replace(line)
 
