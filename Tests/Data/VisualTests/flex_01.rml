@@ -1,6 +1,6 @@
 <rml>
 <head>
-    <title>Flex 01</title>
+    <title>Flex 01 - Basic flexbox</title>
     <link type="text/rcss" href="../style.rcss"/>
 	<link rel="help" href="https://drafts.csswg.org/css-flexbox/" />
 	<meta name="Description" content="Basic flexible box layout." />
@@ -26,7 +26,7 @@
 <body>
 <div id="flex">
 	<div>Hello</div>
-	<div>big<br/>world!</div>
+	<div>big world!</div>
 	<div>LOOOOOOOOOOOOOOOOOOOOONG</div>
 </div>
 <handle size_target="#document"/>

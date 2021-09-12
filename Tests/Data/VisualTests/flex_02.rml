@@ -1,0 +1,72 @@
+<rml>
+<head>
+    <link type="text/rcss" href="/../Tests/Data/style.rcss" />
+    <title>Flex 02 - Various features</title>
+	<meta name="Description" content="Testing various flexible box layout features. Should be comparable to the output in a web browser." />
+    <style>
+        .flex-container {
+            display: flex;
+            margin: 10px 20px;
+            background-color: #333;
+            max-height: 210px;
+            flex-wrap: wrap-reverse;
+        }
+
+        .flex-item {
+            width: 50px;
+            margin: 20px;
+            background-color: #eee;
+            height: 50px;
+            text-align: center;
+        }
+
+        .flex-direction-row {
+            flex-direction: row;
+        }
+        .flex-direction-row-reverse {
+            flex-direction: row-reverse;
+        }
+        .flex-direction-column {
+            flex-direction: column;
+        }
+        .flex-direction-column-reverse {
+            flex-direction: column-reverse;
+        }
+        .absolute {
+            margin: 0;
+            position: absolute;
+            right: 0;
+            bottom: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="flex-container flex-direction-row" style="position: relative">
+        <div class="flex-item absolute">Abs</div>
+        <div class="flex-item" style="margin: 50px;">1</div>
+        <div class="flex-item" style="margin-top: auto">2</div>
+        <div class="flex-item" style="margin: auto">3</div>
+    </div>
+
+    <div class="flex-container flex-direction-row-reverse" style="height: 200px; justify-content: space-around;">
+        <div class="flex-item">1</div>
+        <div class="flex-item" style="margin-bottom: auto;">2</div>
+        <div class="flex-item" style="margin-right: 40px;">3</div>
+    </div>
+
+    <div class="flex-container flex-direction-column">
+        <div class="flex-item" id="test" style="margin-right: auto">1</div>
+        <div class="flex-item">2</div>
+        <div class="flex-item">3</div>
+    </div>
+
+    <div class="flex-container flex-direction-column-reverse">
+        <div class="flex-item">1</div>
+        <div class="flex-item">2 LONG_OVERFLOWING_WORD</div>
+        <div class="flex-item">3</div>
+    </div>
+
+    <handle size_target="#document"/>
+</body>
+</rml>
