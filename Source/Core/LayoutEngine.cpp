@@ -327,8 +327,10 @@ bool LayoutEngine::FormatElementFlex(LayoutBlockBox* block_context_box, Element*
 	LayoutDetails::GetMinMaxHeight(min_size.y, max_size.y, computed, box, containing_block.y);
 	const Vector2f initial_content_size = box.GetSize();
 
+	ElementList absolutely_positioned_elements;
+
 	// Format the flexbox, this may adjust the box content size.
-	const Vector2f content_overflow_size = LayoutFlex::Format(box, min_size, max_size, containing_block, element);
+	const Vector2f content_overflow_size = LayoutFlex::Format(box, min_size, max_size, containing_block, element, absolutely_positioned_elements);
 
 	const Vector2f final_content_size = box.GetSize();
 	RMLUI_ASSERT(final_content_size.y >= 0);
@@ -347,6 +349,10 @@ bool LayoutEngine::FormatElementFlex(LayoutBlockBox* block_context_box, Element*
 
 	// Set the inner content size so that any overflow can be caught.
 	flex_block_context_box->ExtendInnerContentSize(content_overflow_size);
+
+	// Finally, add any absolutely positioned flex children.
+	for (Element* abs_element : absolutely_positioned_elements)
+		flex_block_context_box->AddAbsoluteElement(abs_element);
 
 	// If the close failed, it probably means that its parent produced scrollbars.
 	if (flex_block_context_box->Close() != LayoutBlockBox::OK)

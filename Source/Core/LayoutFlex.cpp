@@ -39,7 +39,8 @@ namespace Rml {
 
 
 
-Vector2f LayoutFlex::Format(Box& box, const Vector2f min_size, const Vector2f max_size, const Vector2f flex_containing_block, Element* element_flex)
+Vector2f LayoutFlex::Format(Box& box, const Vector2f min_size, const Vector2f max_size, const Vector2f flex_containing_block, Element* element_flex,
+	ElementList& absolutely_positioned_elements)
 {
 	const ComputedValues& computed_flex = element_flex->GetComputedValues();
 
@@ -68,7 +69,8 @@ Vector2f LayoutFlex::Format(Box& box, const Vector2f min_size, const Vector2f ma
 	);
 
 	// Construct the layout object and format the table.
-	LayoutFlex layout_flex(element_flex, flex_available_content_size, flex_content_containing_block, flex_content_offset, min_size, max_size);
+	LayoutFlex layout_flex(element_flex, flex_available_content_size, flex_content_containing_block, flex_content_offset, min_size, max_size,
+		absolutely_positioned_elements);
 
 	layout_flex.Format();
 
@@ -79,10 +81,12 @@ Vector2f LayoutFlex::Format(Box& box, const Vector2f min_size, const Vector2f ma
 }
 
 
-LayoutFlex::LayoutFlex(Element* element_flex, Vector2f flex_available_content_size, Vector2f flex_content_containing_block, Vector2f flex_content_offset,
-	Vector2f flex_min_size, Vector2f flex_max_size)
-	: element_flex(element_flex), flex_available_content_size(flex_available_content_size), flex_content_containing_block(flex_content_containing_block), flex_content_offset(flex_content_offset),
-	flex_min_size(flex_min_size), flex_max_size(flex_max_size)
+LayoutFlex::LayoutFlex(Element* element_flex, Vector2f flex_available_content_size, Vector2f flex_content_containing_block,
+	Vector2f flex_content_offset, Vector2f flex_min_size, Vector2f flex_max_size, ElementList& absolutely_positioned_elements) :
+	element_flex(element_flex),
+	flex_available_content_size(flex_available_content_size), flex_content_containing_block(flex_content_containing_block),
+	flex_content_offset(flex_content_offset), flex_min_size(flex_min_size), flex_max_size(flex_max_size),
+	absolutely_positioned_elements(absolutely_positioned_elements)
 {}
 
 // Seems we can share this from table layouting. TODO: Generalize original definition.
@@ -222,7 +226,7 @@ void LayoutFlex::Format()
 		}
 		else if (computed.position == Style::Position::Absolute || computed.position == Style::Position::Fixed)
 		{
-			// TODO: Absolutely positioned item
+			absolutely_positioned_elements.push_back(element);
 			continue;
 		}
 
@@ -568,6 +572,7 @@ void LayoutFlex::Format()
 	{
 		for (FlexItem& item : line.items)
 		{
+			// TODO: Are we handling min/max constraints on the item here?
 			// TODO: Maybe move this simultaneously with main size determination
 			Box box;
 			LayoutDetails::BuildBox(box, flex_content_containing_block, item.element, false, 0.0f);

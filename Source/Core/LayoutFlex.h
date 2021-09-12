@@ -48,10 +48,12 @@ public:
 	/// @param[in] containing_block Flexbox's containing block size.
 	/// @param[in] element_flex The flex container element.
 	/// @return The content size of the flexbox's overflowing content.
-	static Vector2f Format(Box& box, Vector2f min_size, Vector2f max_size, Vector2f containing_block, Element* element_flex);
+	static Vector2f Format(Box& box, Vector2f min_size, Vector2f max_size, Vector2f containing_block, Element* element_flex,
+		ElementList& absolutely_positioned_elements);
 
 private:
-	LayoutFlex(Element* element_flex, Vector2f flex_available_content_size, Vector2f flex_content_containing_block, Vector2f flex_content_offset, Vector2f flex_min_size, Vector2f flex_max_size);
+	LayoutFlex(Element* element_flex, Vector2f flex_available_content_size, Vector2f flex_content_containing_block, Vector2f flex_content_offset,
+		Vector2f flex_min_size, Vector2f flex_max_size, ElementList& absolutely_positioned_elements);
 
 	// Format the flexbox.
 	void Format();
@@ -69,6 +71,7 @@ private:
 	// Overflow size in case flex items overflow the container or contents of any flex items overflow their box (without being caught by the item).
 	Vector2f flex_content_overflow_size;
 
+	ElementList& absolutely_positioned_elements;
 };
 
 } // namespace Rml
