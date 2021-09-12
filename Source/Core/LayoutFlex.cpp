@@ -630,15 +630,20 @@ void LayoutFlex::Format()
 	// Stretch out the lines if we have extra space.
 	if (cross_available_size >= 0.f && computed_flex.align_content == Style::AlignContent::Stretch)
 	{
-		const float remaining_space = cross_available_size - std::accumulate(container.lines.begin(), container.lines.end(), 0.f, [](float value, const FlexLine& line) {
-			return value + line.cross_size;
-		});
+		int remaining_space = static_cast<int>(cross_available_size -
+			std::accumulate(
+				container.lines.begin(), container.lines.end(), 0.f, [](float value, const FlexLine& line) { return value + line.cross_size; }));
 
-		if (remaining_space > 0.f)
+		if (remaining_space > 0)
 		{
-			const float add_space_per_line = remaining_space / float(container.lines.size());
-			for (FlexLine& line : container.lines)
-				line.cross_size += add_space_per_line;
+			// Here we use integer math to ensure all space is distributed to pixel boundaries.
+			const int num_lines = (int)container.lines.size();
+			for (int i = 0; i < num_lines; i++)
+			{
+				const int add_space_to_line = remaining_space / (num_lines - i);
+				remaining_space -= add_space_to_line;
+				container.lines[i].cross_size += static_cast<float>(add_space_to_line);
+			}
 		}
 	}
 
@@ -790,6 +795,10 @@ void LayoutFlex::Format()
 		}
 	}
 
+	auto MainCrossToVec2 = [main_axis_horizontal](const float v_main, const float v_cross) {
+		return main_axis_horizontal ? Vector2f(v_main, v_cross) : Vector2f(v_cross, v_main);
+	};
+
 	// -- Format items --
 	for (const FlexLine& line : container.lines)
 	{
@@ -799,29 +808,27 @@ void LayoutFlex::Format()
 			Box box;
 			LayoutDetails::BuildBox(box, flex_content_containing_block, item.element, true, 0.f);
 
-			float item_main_size = item.used_main_size - item.main.sum_edges;
-			float item_main_offset = item.main_offset;
-			
-			float item_cross_size = item.used_cross_size - item.cross.sum_edges;
-			float item_cross_offset = line.cross_offset + item.cross_offset;
+			const Vector2f item_size = MainCrossToVec2(item.used_main_size - item.main.sum_edges, item.used_cross_size - item.cross.sum_edges);
+			const Vector2f item_offset = MainCrossToVec2(item.main_offset, line.cross_offset + item.cross_offset);
 
-			box.SetContent(main_axis_horizontal ? Vector2f(item_main_size, item_cross_size) : Vector2f(item_cross_size, item_main_size));
-
-			const Vector2f item_offset = main_axis_horizontal ? Vector2f(item_main_offset, item_cross_offset) : Vector2f(item_cross_offset, item_main_offset);
+			box.SetContent(item_size);
 
 			Vector2f cell_visible_overflow_size;
 			LayoutEngine::FormatElement(item.element, flex_content_containing_block, &box, &cell_visible_overflow_size);
 
 			// Set the position of the element within the the flex container
 			item.element->SetOffset(flex_content_offset + item_offset, element_flex);
-
+			
 			// The cell contents may overflow, propagate this to the flex container.
-			flex_content_overflow_size.x = Math::Max(flex_content_overflow_size.x, item_offset.x + cell_visible_overflow_size.x);
-			flex_content_overflow_size.y = Math::Max(flex_content_overflow_size.y, item_offset.y + cell_visible_overflow_size.y);
+			const Vector2f overflow_size =
+				item_offset + cell_visible_overflow_size - Vector2f(box.GetEdge(Box::MARGIN, Box::LEFT), box.GetEdge(Box::MARGIN, Box::TOP));
+
+			flex_content_overflow_size.x = Math::Max(flex_content_overflow_size.x, overflow_size.x);
+			flex_content_overflow_size.y = Math::Max(flex_content_overflow_size.y, overflow_size.y);
 		}
 	}
 
-	flex_resulting_content_size = main_axis_horizontal ? Vector2f(used_main_size, used_cross_size) : Vector2f(used_cross_size, used_main_size);
+	flex_resulting_content_size = MainCrossToVec2(used_main_size, used_cross_size);
 }
 
 } // namespace Rml
