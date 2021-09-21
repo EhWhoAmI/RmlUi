@@ -34,6 +34,7 @@
 #include "../../Include/RmlUi/Core/Types.h"
 #include <algorithm>
 #include <numeric>
+#include <float.h>
 
 namespace Rml {
 
@@ -98,6 +99,7 @@ struct FlexItem {
 		bool auto_margin_a, auto_margin_b;
 		bool auto_size;
 		float margin_a, margin_b;
+		float sum_edges_a;         // Start edge: margin (non-auto) + border + padding
 		float sum_edges;           // Inner->outer size
 		float min_size, max_size;  // Inner size
 	};
@@ -128,6 +130,7 @@ struct FlexItem {
 	float hypothetical_cross_size;  // Outer size
 	float used_cross_size;          // Outer size
 	float cross_offset;             // Offset within line
+	float cross_baseline_top;       // Only used for baseline cross alignment
 };
 
 struct FlexLine {
@@ -168,6 +171,7 @@ static void GetItemSizing(FlexItem::Size& destination, const ComputedFlexItemSiz
 	destination.margin_a = margin_a;
 	destination.margin_b = margin_b;
 	destination.sum_edges = padding_border + margin;
+	destination.sum_edges_a = (direction_reverse ? padding_border_b + margin_b : padding_border_a + margin_a);
 
 	destination.min_size = ResolveValue(computed_size.min_size, base_value);
 	destination.max_size = (computed_size.max_size.value < 0.f ? FLT_MAX : ResolveValue(computed_size.max_size, base_value));
@@ -572,7 +576,6 @@ void LayoutFlex::Format()
 	{
 		for (FlexItem& item : line.items)
 		{
-			// TODO: Are we handling min/max constraints on the item here?
 			// TODO: Maybe move this simultaneously with main size determination
 			Box box;
 			LayoutDetails::BuildBox(box, flex_content_containing_block, item.element, false, 0.0f);
@@ -620,6 +623,7 @@ void LayoutFlex::Format()
 				return a.hypothetical_cross_size < b.hypothetical_cross_size;
 			})->hypothetical_cross_size;
 
+			// Currently, we don't handle the case where baseline alignment could extend the line's cross size, see CSS specs 9.4.8.
 			line.cross_size = Math::Max(0.0f, largest_hypothetical_cross_size);
 
 			if (flex_single_line)
@@ -668,47 +672,62 @@ void LayoutFlex::Format()
 	// -- Align cross axis (§9.6) --
 	for (FlexLine& line : container.lines)
 	{
+		constexpr float UndefinedBaseline = -FLT_MAX;
+		float max_baseline_edge_distance = UndefinedBaseline;
+		FlexItem* max_baseline_item = nullptr;
+
 		for (FlexItem& item : line.items)
 		{
 			const float remaining_space = line.cross_size - item.used_cross_size;
 
 			item.cross_offset = item.cross.margin_a;
+			item.cross_baseline_top = UndefinedBaseline;
 
-			if (remaining_space > 0.f)
+			const int num_auto_margins = int(item.cross.auto_margin_a) + int(item.cross.auto_margin_b);
+			if (num_auto_margins > 0)
 			{
-				const int num_auto_margins = int(item.cross.auto_margin_a) + int(item.cross.auto_margin_b);
-				if (num_auto_margins > 0)
-				{
-					const float space_per_auto_margin = remaining_space / float(num_auto_margins);
-					item.cross_offset = item.cross.margin_a + (item.cross.auto_margin_a ? space_per_auto_margin : 0.f);
-				}
-				else
-				{
-					using Style::AlignSelf;
-					const AlignSelf align_self = item.align_self;
+				const float space_per_auto_margin = Math::Max(remaining_space, 0.0f) / float(num_auto_margins);
+				item.cross_offset = item.cross.margin_a + (item.cross.auto_margin_a ? space_per_auto_margin : 0.f);
+			}
+			else
+			{
+				using Style::AlignSelf;
+				const AlignSelf align_self = item.align_self;
 
-					switch (align_self)
+				switch (align_self)
+				{
+				case AlignSelf::Auto:
+					// Never encountered here: should already have been replaced by container's align-items property.
+					RMLUI_ERROR;
+					break;
+				case AlignSelf::FlexStart:
+					// Do nothing, cross offset set above with this behavior.
+					break;
+				case AlignSelf::FlexEnd:
+					item.cross_offset = item.cross.margin_a + remaining_space;
+					break;
+				case AlignSelf::Center:
+					item.cross_offset = item.cross.margin_a + 0.5f * remaining_space;
+					break;
+				case AlignSelf::Baseline:
+				{
+					// We don't currently have a good way to get the true baseline here, so we make a very rough zero-effort approximation.
+					const float baseline_heuristic = 0.5f * item.element->GetLineHeight();
+					const float sum_edges_top = (wrap_reverse ? item.cross.sum_edges - item.cross.sum_edges_a : item.cross.sum_edges_a);
+
+					item.cross_baseline_top = sum_edges_top + baseline_heuristic;
+
+					const float baseline_edge_distance = (wrap_reverse ? item.used_cross_size - item.cross_baseline_top : item.cross_baseline_top);
+					if (baseline_edge_distance > max_baseline_edge_distance)
 					{
-					case AlignSelf::Auto:
-						// Never encountered here: should already have been replaced by container's align-items property.
-						RMLUI_ERROR;
-						break;
-					case AlignSelf::FlexStart:
-						// Do nothing
-						break;
-					case AlignSelf::FlexEnd:
-						item.cross_offset = item.cross.margin_a + remaining_space;
-						break;
-					case AlignSelf::Center:
-						item.cross_offset = item.cross.margin_a + 0.5f * remaining_space;
-						break;
-					case AlignSelf::Baseline:
-						Log::Message(Log::LT_WARNING, "Flexbox baseline not yet implemented");
-						break;
-					case AlignSelf::Stretch:
-						// Handled above
-						break;
+						max_baseline_item = &item;
+						max_baseline_edge_distance = baseline_edge_distance;
 					}
+				}
+				break;
+				case AlignSelf::Stretch:
+					// Handled above
+					break;
 				}
 			}
 
@@ -716,6 +735,23 @@ void LayoutFlex::Format()
 			{
 				const float reverse_offset = line.cross_size - item.used_cross_size + item.cross.margin_a + item.cross.margin_b;
 				item.cross_offset = reverse_offset - item.cross_offset;
+			}
+		}
+
+		if (max_baseline_item)
+		{
+			// Align all baseline items such that their baselines are aligned with the one with the max. baseline distance.
+			// Cross offset for all baseline items are currently set as in 'flex-start'.
+			const float max_baseline_margin_top = (wrap_reverse ? max_baseline_item->cross.margin_b : max_baseline_item->cross.margin_a);
+			const float line_top_to_baseline_distance = max_baseline_item->cross_offset - max_baseline_margin_top + max_baseline_item->cross_baseline_top;
+
+			for (FlexItem& item : line.items)
+			{
+				if (item.cross_baseline_top != UndefinedBaseline)
+				{
+					const float margin_top = (wrap_reverse ? item.cross.margin_b : item.cross.margin_a);
+					item.cross_offset = line_top_to_baseline_distance - item.cross_baseline_top + margin_top;
+				}
 			}
 		}
 
