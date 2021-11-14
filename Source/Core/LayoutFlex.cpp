@@ -43,8 +43,6 @@ namespace Rml {
 void LayoutFlex::Format(const Box& box, const Vector2f min_size, const Vector2f max_size, const Vector2f flex_containing_block, Element* element_flex,
 	Vector2f& out_formatted_content_size, Vector2f& out_content_overflow_size, ElementList& out_absolutely_positioned_elements)
 {
-	const ComputedValues& computed_flex = element_flex->GetComputedValues();
-
 	ElementScroll* element_scroll = element_flex->GetElementScroll();
 	const Vector2f scrollbar_size = {
 		element_scroll->GetScrollbarSize(ElementScroll::VERTICAL),
@@ -67,11 +65,6 @@ void LayoutFlex::Format(const Box& box, const Vector2f min_size, const Vector2f 
 
 	Math::SnapToPixelGrid(flex_content_offset, flex_available_content_size);
 
-	// TODO gap
-	const Vector2f table_gap = Vector2f(
-		ResolveValue(computed_flex.column_gap, flex_available_content_size.x),
-		ResolveValue(computed_flex.row_gap, Math::Max(0.0f, flex_available_content_size.y))
-	);
 
 	// Construct the layout object and format the table.
 	LayoutFlex layout_flex(element_flex, flex_available_content_size, flex_content_containing_block, flex_content_offset, min_size, max_size,
@@ -140,11 +133,12 @@ struct FlexItem {
 };
 
 struct FlexLine {
+	FlexLine(Vector<FlexItem>&& items) : items(std::move(items)) {}
 	Vector<FlexItem> items;
-	float accumulated_hypothetical_main_size;
-	float cross_size; // Excludes line spacing
-	float cross_spacing_a, cross_spacing_b;
-	float cross_offset;
+	float accumulated_hypothetical_main_size = 0;
+	float cross_size = 0; // Excludes line spacing
+	float cross_spacing_a = 0, cross_spacing_b = 0;
+	float cross_offset = 0;
 };
 
 struct FlexContainer {
@@ -322,7 +316,7 @@ void LayoutFlex::Format()
 
 	if (flex_single_line)
 	{
-		container.lines.push_back(FlexLine{ std::move(items) });
+		container.lines.emplace_back( std::move(items) );
 	}
 	else
 	{
@@ -337,7 +331,7 @@ void LayoutFlex::Format()
 			if (!line_items.empty() && cursor > main_wrap_size)
 			{
 				// Break into new line.
-				container.lines.push_back(FlexLine{ std::move(line_items) });
+				container.lines.emplace_back( std::move(line_items) );
 				cursor = item.hypothetical_main_size;
 				line_items = { std::move(item) };
 			}
@@ -349,7 +343,7 @@ void LayoutFlex::Format()
 		}
 
 		if (!line_items.empty())
-			container.lines.push_back(FlexLine{ std::move(line_items) });
+			container.lines.emplace_back( std::move(line_items) );
 
 		items.clear();
 		items.shrink_to_fit();
