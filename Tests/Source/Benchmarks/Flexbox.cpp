@@ -37,6 +37,160 @@
 using namespace ankerl;
 using namespace Rml;
 
+static const String rml_flexbox_basic_document = R"(
+<rml>
+<head>
+    <title>Flex 01 - Basic flexbox (slow, content-based sizing)</title>
+    <link type="text/rcss" href="/../Tests/Data/style.rcss"/>
+	<style>
+		header, article { display: block; }
+		h1 { font-size: 1.5em; }
+		h2 { font-size: 1.3em; }
+		
+		header {
+			background-color: #9777d9;
+			border: 5dp #666;
+		}
+		h1 {
+			text-align: center;
+			color: white;
+			line-height: 100dp;
+		}
+		section {
+			display: flex;
+			background: #666;
+			border: 5dp #666;
+		}
+		article {
+			padding: 10dp;
+			margin: 0 5dp;
+			background-color: #edd3c0;
+		}
+		h2 {
+			text-align: center;
+			background-color: #eb6e14;
+			margin: -10dp -10dp 0;
+			padding: 10dp 0; 
+		}
+	</style>
+</head>
+<body>
+</body>
+</rml>
+)";
+
+static const String rml_flexbox_basic_document_fast = R"(
+<rml>
+<head>
+    <title>Flex 01 - Basic flexbox (fast, not content based)</title>
+    <link type="text/rcss" href="/../Tests/Data/style.rcss"/>
+	<style>
+		header, article { display: block; }
+		h1 { font-size: 1.5em; }
+		h2 { font-size: 1.3em; }
+		
+		header {
+			background-color: #9777d9;
+			border: 5dp #666;
+		}
+		h1 {
+			text-align: center;
+			color: white;
+			line-height: 100dp;
+		}
+		section {
+			display: flex;
+			background: #666;
+			border: 5dp #666;
+			height: 650px;
+		}
+		article {
+			padding: 10dp;
+			margin: 0 5dp;
+			background-color: #edd3c0;
+			flex: 1;
+			box-sizing: border-box;
+			height: 100%;
+		}
+		h2 {
+			text-align: center;
+			background-color: #eb6e14;
+			margin: -10dp -10dp 0;
+			padding: 10dp 0; 
+		}
+	</style>
+</head>
+<body>
+</body>
+</rml>
+)";
+
+static const String rml_flexbox_basic_document_float_reference = R"(
+<rml>
+<head>
+    <title>Flex 01 - Basic flexbox (float comparison)</title>
+    <link type="text/rcss" href="/../Tests/Data/style.rcss"/>
+	<style>
+		header, article { display: block; }
+		h1 { font-size: 1.5em; }
+		h2 { font-size: 1.3em; }
+		
+		header {
+			background-color: #9777d9;
+			border: 5dp #666;
+		}
+		h1 {
+			text-align: center;
+			color: white;
+			line-height: 100dp;
+		}
+		section {
+			display: block;
+			background: #666;
+			border: 5dp #666;
+		}
+		article {
+			padding: 10dp;
+			margin: 0 5dp;
+			background-color: #edd3c0;
+			float: left;
+			width: 30%;
+			box-sizing: border-box;
+		}
+		h2 {
+			text-align: center;
+			background-color: #eb6e14;
+			margin: -10dp -10dp 0;
+			padding: 10dp 0; 
+		}
+	</style>
+</head>
+<body>
+</body>
+</rml>
+)";
+
+static const String rml_flexbox_basic_body = R"(
+<header>
+	<h1>Header</h1>
+</header>
+<section>
+	<article>
+		<h2>First article</h2>
+		<p>Etiam libero lorem, lacinia non augue lobortis, tincidunt consequat justo. Sed id enim tempor, feugiat tortor id, rhoncus enim. Quisque pretium neque eu felis tincidunt fringilla. Mauris laoreet enim neque, iaculis cursus lorem mollis sed. Nulla pretium euismod nulla sed convallis. Curabitur in tempus sem. Phasellus suscipit vitae nulla nec ultricies.</p>
+	</article>
+	<article>
+		<h2>Second article</h2>
+		<p>Ut volutpat, odio et facilisis molestie, lacus elit euismod enim, et tempor lacus sapien finibus ipsum. Aliquam erat volutpat. Nullam risus turpis, hendrerit ac fermentum in, dapibus non risus.</p>
+	</article>
+	<article>
+		<h2>Third article</h2>
+		<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed aliquet commodo nisi, id cursus enim eleifend vitae. Praesent turpis lorem, commodo id tempus sit amet, faucibus et libero. Aliquam malesuada ultrices leo, ut molestie tortor posuere sit amet. Proin vitae tortor a sem consequat gravida. Maecenas sed egestas dolor.</p>
+		<p>In gravida ligula in turpis molestie varius. Ut sed velit id tellus aliquet aliquet. Nulla et leo tellus. Ut a convallis dolor, eu rutrum enim. Nam vitae ultrices dui. Aliquam semper eros ut ultrices rutrum.</p>
+	</article>
+</section>
+)";
+
 static const String rml_flexbox_mixed_document = R"(
 <rml>
 <head>
@@ -188,6 +342,84 @@ TEST_CASE("flexbox")
 {
 	Context* context = TestsShell::GetContext();
 	REQUIRE(context);
+
+	{
+		nanobench::Bench bench;
+		bench.title("Flexbox basic layout");
+		bench.relative(true);
+
+		// Construct the flexbox layout document.
+		ElementDocument* document = context->LoadDocumentFromMemory(rml_flexbox_basic_document);
+		REQUIRE(document);
+		document->Show();
+
+		document->SetInnerRML(rml_flexbox_basic_body);
+		context->Update();
+		context->Render();
+
+		TestsShell::RenderLoop();
+
+		// Compare to an almost equivalent fast flexbox layout where we try to eliminate any content-based sizing. Uses the same body rml.
+		ElementDocument* document_fast = context->LoadDocumentFromMemory(rml_flexbox_basic_document_fast);
+		REQUIRE(document_fast);
+		document_fast->Show();
+
+		document_fast->SetInnerRML(rml_flexbox_basic_body);
+		context->Update();
+		context->Render();
+
+		TestsShell::RenderLoop();
+
+		// Finally, add a reference document based on layout with float boxes instead of flexbox. Uses the same body rml.
+		ElementDocument* document_float_reference = context->LoadDocumentFromMemory(rml_flexbox_basic_document_float_reference);
+		REQUIRE(document_float_reference);
+		document_float_reference->Show();
+
+		document_float_reference->SetInnerRML(rml_flexbox_basic_body);
+		context->Update();
+		context->Render();
+
+		TestsShell::RenderLoop();
+
+		bench.run("Update (unmodified)", [&] { context->Update(); });
+
+		bench.run("Render", [&] { context->Render(); });
+
+		bench.run("SetInnerRML", [&] { document->SetInnerRML(rml_flexbox_scroll_body); });
+
+		bench.run("SetInnerRML + Update (float reference)", [&] {
+			document_float_reference->SetInnerRML(rml_flexbox_basic_body);
+			context->Update();
+		});
+		bench.run("SetInnerRML + Update (fast version)", [&] {
+			document_fast->SetInnerRML(rml_flexbox_basic_body);
+			context->Update();
+		});
+		bench.run("SetInnerRML + Update", [&] {
+			document->SetInnerRML(rml_flexbox_basic_body);
+			context->Update();
+		});
+
+		bench.run("SetInnerRML + Update + Render (float reference)", [&] {
+			document_float_reference->SetInnerRML(rml_flexbox_basic_body);
+			context->Update();
+			context->Render();
+		});
+		bench.run("SetInnerRML + Update + Render (fast version)", [&] {
+			document_fast->SetInnerRML(rml_flexbox_basic_body);
+			context->Update();
+			context->Render();
+		});
+		bench.run("SetInnerRML + Update + Render", [&] {
+			document->SetInnerRML(rml_flexbox_basic_body);
+			context->Update();
+			context->Render();
+		});
+
+		document->Close();
+		document_fast->Close();
+		document_float_reference->Close();
+	}
 
 	{
 		nanobench::Bench bench;
