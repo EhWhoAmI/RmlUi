@@ -315,38 +315,30 @@ bool LayoutEngine::FormatElementInlineBlock(LayoutBlockBox* block_context_box, E
 bool LayoutEngine::FormatElementFlex(LayoutBlockBox* block_context_box, Element* element)
 {
 	const ComputedValues& computed = element->GetComputedValues();
-	
 	const Vector2f containing_block = LayoutDetails::GetContainingBlock(block_context_box);
+	RMLUI_ASSERT(containing_block.x >= 0.f);
 
-	// Build the initial box as specified by the flex's style, as if it were a normal block element.
+	// Build the initial box as specified by the flex's style, as if it was a normal block element.
 	Box box;
 	LayoutDetails::BuildBox(box, containing_block, element, false);
 
 	Vector2f min_size, max_size;
 	LayoutDetails::GetMinMaxWidth(min_size.x, max_size.x, computed, box, containing_block.x);
 	LayoutDetails::GetMinMaxHeight(min_size.y, max_size.y, computed, box, containing_block.y);
-	const Vector2f initial_content_size = box.GetSize();
 
-	ElementList absolutely_positioned_elements;
-
-	// Format the flexbox, this may adjust the box content size.
-	const Vector2f content_overflow_size = LayoutFlex::Format(box, min_size, max_size, containing_block, element, absolutely_positioned_elements);
-
-	const Vector2f final_content_size = box.GetSize();
-	RMLUI_ASSERT(final_content_size.y >= 0);
-
-	if (final_content_size != initial_content_size)
-	{
-		// Perform this step to re-evaluate any auto margins.
-		LayoutDetails::BuildBoxSizeAndMargins(box, min_size, max_size, containing_block, element, false, true);
-	}
-
-	// Now that the box is finalized, we can add the flex container as a block element. If we did it earlier, eg. just before formatting the flexbox,
-	// then the flexbox element's offset would not be correct in cases where table size and auto-margins were adjusted.
-	LayoutBlockBox* flex_block_context_box = block_context_box->AddBlockElement(element, box, final_content_size.y, final_content_size.y);
+	// Add the flex container element as if it was a normal block element.
+	LayoutBlockBox* flex_block_context_box = block_context_box->AddBlockElement(element, box, min_size.y, max_size.y);
 	if (!flex_block_context_box)
 		return false;
 
+	// Format the flexbox and all its children.
+	ElementList absolutely_positioned_elements;
+	Vector2f formatted_content_size, content_overflow_size;
+	LayoutFlex::Format(
+		box, min_size, max_size, containing_block, element, formatted_content_size, content_overflow_size, absolutely_positioned_elements);
+
+	// Set the box content size to match the one determined by the formatting procedure.
+	flex_block_context_box->GetBox().SetContent(formatted_content_size);
 	// Set the inner content size so that any overflow can be caught.
 	flex_block_context_box->ExtendInnerContentSize(content_overflow_size);
 
@@ -354,9 +346,29 @@ bool LayoutEngine::FormatElementFlex(LayoutBlockBox* block_context_box, Element*
 	for (Element* abs_element : absolutely_positioned_elements)
 		flex_block_context_box->AddAbsoluteElement(abs_element);
 
-	// If the close failed, it probably means that its parent produced scrollbars.
-	if (flex_block_context_box->Close() != LayoutBlockBox::OK)
+	// Close the block box, this may result in scrollbars being added to ourself or our parent.
+	const auto close_result = flex_block_context_box->Close();
+	if (close_result == LayoutBlockBox::LAYOUT_PARENT)
+	{
+		// Scollbars added to parent, bail out to reformat all its children.
 		return false;
+	}
+	else if (close_result == LayoutBlockBox::LAYOUT_SELF)
+	{
+		// Scrollbars added to flex container, it needs to be formatted again to account for changed width or height.
+		absolutely_positioned_elements.clear();
+
+		LayoutFlex::Format(
+			box, min_size, max_size, containing_block, element, formatted_content_size, content_overflow_size, absolutely_positioned_elements);
+
+		flex_block_context_box->GetBox().SetContent(formatted_content_size);
+		flex_block_context_box->ExtendInnerContentSize(content_overflow_size);
+
+		if (flex_block_context_box->Close() == LayoutBlockBox::LAYOUT_PARENT)
+			return false;
+	}
+
+	element->OnLayout();
 
 	return true;
 }

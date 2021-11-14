@@ -31,6 +31,7 @@
 #include "LayoutEngine.h"
 #include "LayoutTableDetails.h" // TODO
 #include "../../Include/RmlUi/Core/Element.h"
+#include "../../Include/RmlUi/Core/ElementScroll.h"
 #include "../../Include/RmlUi/Core/Types.h"
 #include <algorithm>
 #include <numeric>
@@ -39,46 +40,51 @@
 namespace Rml {
 
 
-
-Vector2f LayoutFlex::Format(Box& box, const Vector2f min_size, const Vector2f max_size, const Vector2f flex_containing_block, Element* element_flex,
-	ElementList& absolutely_positioned_elements)
+void LayoutFlex::Format(const Box& box, const Vector2f min_size, const Vector2f max_size, const Vector2f flex_containing_block, Element* element_flex,
+	Vector2f& out_formatted_content_size, Vector2f& out_content_overflow_size, ElementList& out_absolutely_positioned_elements)
 {
 	const ComputedValues& computed_flex = element_flex->GetComputedValues();
 
-	if (!(computed_flex.overflow_x == Style::Overflow::Visible || computed_flex.overflow_x == Style::Overflow::Hidden) ||
-		!(computed_flex.overflow_y == Style::Overflow::Visible || computed_flex.overflow_y == Style::Overflow::Hidden))
-	{
-		Log::Message(Log::LT_WARNING, "Scrolling flexboxes not yet implemented: %s.", element_flex->GetAddress().c_str());
-		return Vector2f(0);
-	}
-
-	const Vector2f box_content_size = box.GetSize();
-	const bool table_auto_height = (box_content_size.y < 0.0f);
+	ElementScroll* element_scroll = element_flex->GetElementScroll();
+	const Vector2f scrollbar_size = {
+		element_scroll->GetScrollbarSize(ElementScroll::VERTICAL),
+		element_scroll->GetScrollbarSize(ElementScroll::HORIZONTAL)
+	};
 
 	Vector2f flex_content_offset = box.GetPosition();
-	Vector2f flex_available_content_size = Vector2f(box_content_size.x, box_content_size.y); // May be negative for infinite space
 
+	const Vector2f box_content_size = box.GetSize();
+	const bool auto_height = (box_content_size.y < 0.0f);
+
+	Vector2f flex_available_content_size = Math::Max(box_content_size - scrollbar_size, Vector2f(0.f));
 	Vector2f flex_content_containing_block = flex_available_content_size;
-	if (flex_content_containing_block.y < .0f)
+
+	if (auto_height)
+	{
+		flex_available_content_size.y = -1.f; // Negative means infinite space
 		flex_content_containing_block.y = flex_containing_block.y;
+	}
 
 	Math::SnapToPixelGrid(flex_content_offset, flex_available_content_size);
 
+	// TODO gap
 	const Vector2f table_gap = Vector2f(
-		ResolveValue(computed_flex.column_gap, flex_available_content_size.x), // TODO: Fix for infinite values
-		ResolveValue(computed_flex.row_gap, flex_available_content_size.y)
+		ResolveValue(computed_flex.column_gap, flex_available_content_size.x),
+		ResolveValue(computed_flex.row_gap, Math::Max(0.0f, flex_available_content_size.y))
 	);
 
 	// Construct the layout object and format the table.
 	LayoutFlex layout_flex(element_flex, flex_available_content_size, flex_content_containing_block, flex_content_offset, min_size, max_size,
-		absolutely_positioned_elements);
+		out_absolutely_positioned_elements);
 
 	layout_flex.Format();
 
-	// Update the box size based on the new table size.
-	box.SetContent(layout_flex.flex_resulting_content_size);
+	// Update the box height based on the formatted flexbox. The width is determined as a normal block box so we don't need to change that.
+	out_formatted_content_size = box_content_size;
+	if (auto_height)
+		out_formatted_content_size = Vector2f(box_content_size.x, layout_flex.flex_resulting_content_size.y + scrollbar_size.y);
 
-	return layout_flex.flex_content_overflow_size;
+	out_content_overflow_size = layout_flex.flex_content_overflow_size;
 }
 
 

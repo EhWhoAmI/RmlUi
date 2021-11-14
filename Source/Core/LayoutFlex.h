@@ -34,22 +34,20 @@
 namespace Rml {
 
 class Box;
-class TableGrid;
-struct TrackBox;
-using TrackBoxList = Vector<TrackBox>;
-
 
 class LayoutFlex {
 public:
-	/// Formats and positions a flexible box, including all elements contained within.
-	/// @param[inout] box The box used for dimensioning the flex container, the resulting flexbox size is set on the box.
+	/// Formats a flexible box, including all elements contained within.
+	/// @param[in] box The box used for dimensioning the flex container.
 	/// @param[in] min_size Minimum width and height of the flexbox.
 	/// @param[in] max_size Maximum width and height of the flexbox.
 	/// @param[in] containing_block Flexbox's containing block size.
 	/// @param[in] element_flex The flex container element.
-	/// @return The content size of the flexbox's overflowing content.
-	static Vector2f Format(Box& box, Vector2f min_size, Vector2f max_size, Vector2f containing_block, Element* element_flex,
-		ElementList& absolutely_positioned_elements);
+	/// @param[out] out_formatted_content_size The flex container element's used size.
+	/// @param[out] out_content_overflow_size  The content size of the flexbox's overflowing content.
+	/// @param[out] out_absolutely_positioned_elements List of absolutely positioned elements within the flexbox.
+	static void Format(const Box& box, Vector2f min_size, Vector2f max_size, Vector2f containing_block, Element* element_flex,
+		Vector2f& out_formatted_content_size, Vector2f& out_content_overflow_size, ElementList& out_absolutely_positioned_elements);
 
 private:
 	LayoutFlex(Element* element_flex, Vector2f flex_available_content_size, Vector2f flex_content_containing_block, Vector2f flex_content_offset,
