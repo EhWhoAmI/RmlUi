@@ -29,16 +29,31 @@
 #ifndef RMLUI_CORE_LAYOUTDETAILS_H
 #define RMLUI_CORE_LAYOUTDETAILS_H
 
-#include "LayoutBlockBox.h"
+#include "../../Include/RmlUi/Core/ComputedValues.h"
+#include "../../Include/RmlUi/Core/Types.h"
 
 namespace Rml {
 
 class Box;
+class LayoutBlockBox;
+
+/**
+    ComputedAxisSize is an abstraction of an element's computed size properties along a single axis, either horizontally or vertically,
+    allowing eg. rows and columns alike to use the same algorithms. Here, 'a' means left or top, 'b' means right or bottom.
+*/
+struct ComputedAxisSize {
+	Style::LengthPercentageAuto size;
+	Style::LengthPercentage min_size, max_size;
+	Style::Padding padding_a, padding_b;
+	Style::Margin margin_a, margin_b;
+	float border_a, border_b;
+	Style::BoxSizing box_sizing;
+};
 
 /**
 	Layout functions for sizing elements.
 	
-	Corresponds to the CSS 2.1 specification, 'Section 10. Visual formatting model details'.
+	Some procedures based on the CSS 2.1 specification, 'Section 10. Visual formatting model details'.
  */
 
 class LayoutDetails
@@ -88,6 +103,14 @@ public:
 
 	/// Formats the element and returns the width of its contents.
 	static float GetShrinkToFitWidth(Element* element, Vector2f containing_block);
+
+	/// Build computed axis size along the horizontal direction (width and friends).
+	static ComputedAxisSize BuildComputedHorizontalSize(const ComputedValues& computed);
+	/// Build computed axis size along the vertical direction (height and friends).
+	static ComputedAxisSize BuildComputedVerticalSize(const ComputedValues& computed);
+	/// Resolve edge sizes from a computed axis size.
+	static void GetEdgeSizes(
+		float& margin_a, float& margin_b, float& padding_border_a, float& padding_border_b, const ComputedAxisSize& computed_size, float base_value);
 
 private:
 	/// Calculates and returns the content size for replaced elements.

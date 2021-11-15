@@ -29,7 +29,6 @@
 #include "LayoutFlex.h"
 #include "LayoutDetails.h"
 #include "LayoutEngine.h"
-#include "LayoutTableDetails.h" // TODO
 #include "../../Include/RmlUi/Core/Element.h"
 #include "../../Include/RmlUi/Core/ElementScroll.h"
 #include "../../Include/RmlUi/Core/Types.h"
@@ -65,14 +64,13 @@ void LayoutFlex::Format(const Box& box, const Vector2f min_size, const Vector2f 
 
 	Math::SnapToPixelGrid(flex_content_offset, flex_available_content_size);
 
-
 	// Construct the layout object and format the table.
 	LayoutFlex layout_flex(element_flex, flex_available_content_size, flex_content_containing_block, flex_content_offset, min_size, max_size,
 		out_absolutely_positioned_elements);
 
 	layout_flex.Format();
 
-	// Update the box height based on the formatted flexbox. The width is determined as a normal block box so we don't need to change that.
+	// Output the size of the formatted flexbox. The width is determined as a normal block box so we don't need to change that.
 	out_formatted_content_size = box_content_size;
 	if (auto_height)
 		out_formatted_content_size = Vector2f(box_content_size.x, layout_flex.flex_resulting_content_size.y + scrollbar_size.y);
@@ -88,9 +86,6 @@ LayoutFlex::LayoutFlex(Element* element_flex, Vector2f flex_available_content_si
 	flex_content_offset(flex_content_offset), flex_min_size(flex_min_size), flex_max_size(flex_max_size),
 	absolutely_positioned_elements(absolutely_positioned_elements)
 {}
-
-// Seems we can share this from table layouting. TODO: Generalize original definition.
-using ComputedFlexItemSize = ComputedTrackSize;
 
 struct FlexItem {
 	// In the following, suffix '_a' means flex start edge while '_b' means flex end edge.
@@ -145,20 +140,10 @@ struct FlexContainer {
 	Vector<FlexLine> lines;
 };
 
-static void GetEdgeSizes(float& margin_a, float& margin_b, float& padding_border_a, float& padding_border_b, const ComputedFlexItemSize& computed_size, const float base_value)
-{
-	// Todo: Copy/Pasted from TableDetails
-	margin_a = ResolveValue(computed_size.margin_a, base_value);
-	margin_b = ResolveValue(computed_size.margin_b, base_value);
-
-	padding_border_a = Math::Max(0.0f, ResolveValue(computed_size.padding_a, base_value)) + Math::Max(0.0f, computed_size.border_a);
-	padding_border_b = Math::Max(0.0f, ResolveValue(computed_size.padding_b, base_value)) + Math::Max(0.0f, computed_size.border_b);
-}
-
-static void GetItemSizing(FlexItem::Size& destination, const ComputedFlexItemSize& computed_size, const float base_value, const bool direction_reverse)
+static void GetItemSizing(FlexItem::Size& destination, const ComputedAxisSize& computed_size, const float base_value, const bool direction_reverse)
 {
 	float margin_a, margin_b, padding_border_a, padding_border_b;
-	GetEdgeSizes(margin_a, margin_b, padding_border_a, padding_border_b, computed_size, base_value);
+	LayoutDetails::GetEdgeSizes(margin_a, margin_b, padding_border_a, padding_border_b, computed_size, base_value);
 
 	const float padding_border = padding_border_a + padding_border_b;
 	const float margin = margin_a + margin_b;
@@ -192,6 +177,9 @@ static void GetItemSizing(FlexItem::Size& destination, const ComputedFlexItemSiz
 
 void LayoutFlex::Format()
 {
+	// The following procedure is generally based on the CSS flexible box layout algorithm.
+	// For details, see https://drafts.csswg.org/css-flexbox/#layout-algorithm
+	
 	const ComputedValues& computed_flex = element_flex->GetComputedValues();
 	const Style::FlexDirection direction = computed_flex.flex_direction;
 
@@ -240,10 +228,10 @@ void LayoutFlex::Format()
 		Style::LengthPercentageAuto item_main_size;
 
 		{
-			// TODO: The Build... names have reverse meaning from table layout
-			ComputedFlexItemSize computed_main_size = main_axis_horizontal ? BuildComputedColumnSize(computed) : BuildComputedRowSize(computed);
-			// TODO: Not very efficient.
-			ComputedFlexItemSize computed_cross_size = !main_axis_horizontal ? BuildComputedColumnSize(computed) : BuildComputedRowSize(computed);
+			const ComputedAxisSize computed_main_size =
+				main_axis_horizontal ? LayoutDetails::BuildComputedHorizontalSize(computed) : LayoutDetails::BuildComputedVerticalSize(computed);
+			const ComputedAxisSize computed_cross_size =
+				!main_axis_horizontal ? LayoutDetails::BuildComputedHorizontalSize(computed) : LayoutDetails::BuildComputedVerticalSize(computed);
 
 			GetItemSizing(item.main, computed_main_size, main_size_base_value, direction_reverse);
 			GetItemSizing(item.cross, computed_cross_size, cross_size_base_value, wrap_reverse);
@@ -418,7 +406,7 @@ void LayoutFlex::Format()
 				// Distribute free space proportionally to flex factors
 				if (flex_mode_grow)
 				{
-					for (auto& item : line.items)
+					for (FlexItem& item : line.items)
 					{
 						if (!item.frozen)
 						{
@@ -433,7 +421,7 @@ void LayoutFlex::Format()
 						return value + (item.frozen ? 0.0f : item.flex_shrink_factor * item.inner_flex_base_size);
 					});
 
-					for (auto& item : line.items)
+					for (FlexItem& item : line.items)
 					{
 						if (!item.frozen)
 						{
