@@ -99,6 +99,7 @@ struct FlexItem {
 	};
 
 	Element* element;
+	Box box;
 
 	// Filled during the build step.
 	Size main;
@@ -224,6 +225,7 @@ void LayoutFlex::Format()
 
 		FlexItem item = {};
 		item.element = element;
+		LayoutDetails::BuildBox(item.box, flex_content_containing_block, element, BoxContext::FlexOrTable, 0.0f);
 
 		Style::LengthPercentageAuto item_main_size;
 
@@ -272,15 +274,13 @@ void LayoutFlex::Format()
 		}
 		else
 		{
-			Box box;
-			LayoutDetails::BuildBox(box, flex_content_containing_block, element, false);
-			if (box.GetSize().y >= 0.f)
+			if (item.box.GetSize().y >= 0.f)
 			{
-				item.inner_flex_base_size = box.GetSize().y;
+				item.inner_flex_base_size = item.box.GetSize().y;
 			}
 			else
 			{
-				LayoutEngine::FormatElement(element, flex_content_containing_block, &box);
+				LayoutEngine::FormatElement(element, flex_content_containing_block, &item.box);
 				item.inner_flex_base_size = element->GetBox().GetSize().y;
 			}
 		}
@@ -564,18 +564,15 @@ void LayoutFlex::Format()
 	{
 		for (FlexItem& item : line.items)
 		{
-			// TODO: Maybe move this simultaneously with main size determination
-			Box box;
-			LayoutDetails::BuildBox(box, flex_content_containing_block, item.element, false, 0.0f);
-			const Vector2f content_size = box.GetSize();
+			const Vector2f content_size = item.box.GetSize();
 			const float used_main_size_inner = item.used_main_size - item.main.sum_edges;
 
 			if (main_axis_horizontal)
 			{
 				if (content_size.y < 0.0f)
 				{
-					box.SetContent(Vector2f(used_main_size_inner, content_size.y));
-					LayoutEngine::FormatElement(item.element, flex_content_containing_block, &box);
+					item.box.SetContent(Vector2f(used_main_size_inner, content_size.y));
+					LayoutEngine::FormatElement(item.element, flex_content_containing_block, &item.box);
 					item.hypothetical_cross_size = item.element->GetBox().GetSize().y + item.cross.sum_edges;
 				}
 				else
@@ -587,7 +584,7 @@ void LayoutFlex::Format()
 			{
 				if (content_size.x < 0.0f || item.cross.auto_size)
 				{
-					box.SetContent(Vector2f(content_size.x, used_main_size_inner));
+					item.box.SetContent(Vector2f(content_size.x, used_main_size_inner));
 					item.hypothetical_cross_size = LayoutDetails::GetShrinkToFitWidth(item.element, flex_content_containing_block) + item.cross.sum_edges;
 				}
 				else
@@ -824,28 +821,24 @@ void LayoutFlex::Format()
 	};
 
 	// -- Format items --
-	for (const FlexLine& line : container.lines)
+	for (FlexLine& line : container.lines)
 	{
-		for (const FlexItem& item : line.items)
+		for (FlexItem& item : line.items)
 		{
-			// TODO: We really only care about padding and border from BuildBox, everything else is ignored. Store box or padding/border from earlier?
-			Box box;
-			LayoutDetails::BuildBox(box, flex_content_containing_block, item.element, true, 0.f);
-
 			const Vector2f item_size = MainCrossToVec2(item.used_main_size - item.main.sum_edges, item.used_cross_size - item.cross.sum_edges);
 			const Vector2f item_offset = MainCrossToVec2(item.main_offset, line.cross_offset + item.cross_offset);
 
-			box.SetContent(item_size);
+			item.box.SetContent(item_size);
 
 			Vector2f cell_visible_overflow_size;
-			LayoutEngine::FormatElement(item.element, flex_content_containing_block, &box, &cell_visible_overflow_size);
+			LayoutEngine::FormatElement(item.element, flex_content_containing_block, &item.box, &cell_visible_overflow_size);
 
 			// Set the position of the element within the the flex container
 			item.element->SetOffset(flex_content_offset + item_offset, element_flex);
 			
 			// The cell contents may overflow, propagate this to the flex container.
-			const Vector2f overflow_size =
-				item_offset + cell_visible_overflow_size - Vector2f(box.GetEdge(Box::MARGIN, Box::LEFT), box.GetEdge(Box::MARGIN, Box::TOP));
+			const Vector2f overflow_size = item_offset + cell_visible_overflow_size -
+				Vector2f(item.box.GetEdge(Box::MARGIN, Box::LEFT), item.box.GetEdge(Box::MARGIN, Box::TOP));
 
 			flex_content_overflow_size.x = Math::Max(flex_content_overflow_size.x, overflow_size.x);
 			flex_content_overflow_size.y = Math::Max(flex_content_overflow_size.y, overflow_size.y);
