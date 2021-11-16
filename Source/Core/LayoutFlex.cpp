@@ -15,7 +15,7 @@
  *
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -27,26 +27,23 @@
  */
 
 #include "LayoutFlex.h"
-#include "LayoutDetails.h"
-#include "LayoutEngine.h"
 #include "../../Include/RmlUi/Core/Element.h"
 #include "../../Include/RmlUi/Core/ElementScroll.h"
 #include "../../Include/RmlUi/Core/Types.h"
+#include "LayoutDetails.h"
+#include "LayoutEngine.h"
 #include <algorithm>
-#include <numeric>
 #include <float.h>
+#include <numeric>
 
 namespace Rml {
-
 
 void LayoutFlex::Format(const Box& box, const Vector2f min_size, const Vector2f max_size, const Vector2f flex_containing_block, Element* element_flex,
 	Vector2f& out_formatted_content_size, Vector2f& out_content_overflow_size, ElementList& out_absolutely_positioned_elements)
 {
 	ElementScroll* element_scroll = element_flex->GetElementScroll();
-	const Vector2f scrollbar_size = {
-		element_scroll->GetScrollbarSize(ElementScroll::VERTICAL),
-		element_scroll->GetScrollbarSize(ElementScroll::HORIZONTAL)
-	};
+	const Vector2f scrollbar_size = {element_scroll->GetScrollbarSize(ElementScroll::VERTICAL),
+		element_scroll->GetScrollbarSize(ElementScroll::HORIZONTAL)};
 
 	Vector2f flex_content_offset = box.GetPosition();
 
@@ -78,7 +75,6 @@ void LayoutFlex::Format(const Box& box, const Vector2f min_size, const Vector2f 
 	out_content_overflow_size = layout_flex.flex_content_overflow_size;
 }
 
-
 LayoutFlex::LayoutFlex(Element* element_flex, Vector2f flex_available_content_size, Vector2f flex_content_containing_block,
 	Vector2f flex_content_offset, Vector2f flex_min_size, Vector2f flex_max_size, ElementList& absolutely_positioned_elements) :
 	element_flex(element_flex),
@@ -93,9 +89,9 @@ struct FlexItem {
 		bool auto_margin_a, auto_margin_b;
 		bool auto_size;
 		float margin_a, margin_b;
-		float sum_edges_a;         // Start edge: margin (non-auto) + border + padding
-		float sum_edges;           // Inner->outer size
-		float min_size, max_size;  // Inner size
+		float sum_edges_a;        // Start edge: margin (non-auto) + border + padding
+		float sum_edges;          // Inner->outer size
+		float min_size, max_size; // Inner size
 	};
 
 	Element* element;
@@ -106,7 +102,7 @@ struct FlexItem {
 	Size cross;
 	float flex_shrink_factor;
 	float flex_grow_factor;
-	Style::AlignSelf align_self;  // 'Auto' is replaced by container's 'align-items' value
+	Style::AlignSelf align_self; // 'Auto' is replaced by container's 'align-items' value
 
 	float inner_flex_base_size;   // Inner size
 	float flex_base_size;         // Outer size
@@ -116,16 +112,16 @@ struct FlexItem {
 	enum class Violation : std::uint8_t { None = 0, Min, Max };
 	bool frozen;
 	Violation violation;
-	float target_main_size;       // Outer size
-	float used_main_size;         // Outer size (without auto margins)
+	float target_main_size; // Outer size
+	float used_main_size;   // Outer size (without auto margins)
 	float main_auto_margin_size_a, main_auto_margin_size_b;
 	float main_offset;
 
 	// Used for resolving cross size
-	float hypothetical_cross_size;  // Outer size
-	float used_cross_size;          // Outer size
-	float cross_offset;             // Offset within line
-	float cross_baseline_top;       // Only used for baseline cross alignment
+	float hypothetical_cross_size; // Outer size
+	float used_cross_size;         // Outer size
+	float cross_offset;            // Offset within line
+	float cross_baseline_top;      // Only used for baseline cross alignment
 };
 
 struct FlexLine {
@@ -180,7 +176,7 @@ void LayoutFlex::Format()
 {
 	// The following procedure is generally based on the CSS flexible box layout algorithm.
 	// For details, see https://drafts.csswg.org/css-flexbox/#layout-algorithm
-	
+
 	const ComputedValues& computed_flex = element_flex->GetComputedValues();
 	const Style::FlexDirection direction = computed_flex.flex_direction;
 
@@ -246,7 +242,7 @@ void LayoutFlex::Format()
 		item.align_self = computed.align_self;
 
 		static_assert(int(Style::AlignSelf::FlexStart) == int(Style::AlignItems::FlexStart) + 1 &&
-						  int(Style::AlignSelf::Stretch) == int(Style::AlignItems::Stretch) + 1,
+				int(Style::AlignSelf::Stretch) == int(Style::AlignItems::Stretch) + 1,
 			"It is assumed below that align items is a shifted version (no auto value) of align self.");
 
 		// Use the container's align-items property if align-self is auto.
@@ -304,7 +300,7 @@ void LayoutFlex::Format()
 
 	if (flex_single_line)
 	{
-		container.lines.emplace_back( std::move(items) );
+		container.lines.emplace_back(std::move(items));
 	}
 	else
 	{
@@ -319,9 +315,9 @@ void LayoutFlex::Format()
 			if (!line_items.empty() && cursor > main_wrap_size)
 			{
 				// Break into new line.
-				container.lines.emplace_back( std::move(line_items) );
+				container.lines.emplace_back(std::move(line_items));
 				cursor = item.hypothetical_main_size;
-				line_items = { std::move(item) };
+				line_items = {std::move(item)};
 			}
 			else
 			{
@@ -331,7 +327,7 @@ void LayoutFlex::Format()
 		}
 
 		if (!line_items.empty())
-			container.lines.emplace_back( std::move(line_items) );
+			container.lines.emplace_back(std::move(line_items));
 
 		items.clear();
 		items.shrink_to_fit();
@@ -339,17 +335,16 @@ void LayoutFlex::Format()
 
 	for (FlexLine& line : container.lines)
 	{
-		line.accumulated_hypothetical_main_size = std::accumulate(line.items.begin(), line.items.end(), 0.0f, [](float value, const FlexItem& item) {
-			return value + item.hypothetical_main_size;
-		});
+		line.accumulated_hypothetical_main_size = std::accumulate(line.items.begin(), line.items.end(), 0.0f,
+			[](float value, const FlexItem& item) { return value + item.hypothetical_main_size; });
 	}
 
 	// If the available main size is infinite, the used main size becomes the accumulated outer size of all items of the widest line.
-	const float used_main_size =
-		main_available_size >= 0.f ? main_available_size :
-		std::max_element(container.lines.begin(), container.lines.end(), [](const FlexLine& a, const FlexLine& b) {
-			return a.accumulated_hypothetical_main_size < b.accumulated_hypothetical_main_size;
-		})->accumulated_hypothetical_main_size;
+	const float used_main_size = main_available_size >= 0.f
+		? main_available_size
+		: std::max_element(container.lines.begin(), container.lines.end(), [](const FlexLine& a, const FlexLine& b) {
+			  return a.accumulated_hypothetical_main_size < b.accumulated_hypothetical_main_size;
+		  })->accumulated_hypothetical_main_size;
 
 	// -- Determine main size --
 	// Resolve flexible lengths to find the used main size of all items.
@@ -359,18 +354,15 @@ void LayoutFlex::Format()
 
 		const bool flex_mode_grow = (available_flex_space > 0.f);
 
-		auto FlexFactor = [flex_mode_grow](const FlexItem& item) {
-			return (flex_mode_grow ? item.flex_grow_factor : item.flex_shrink_factor);
-		};
+		auto FlexFactor = [flex_mode_grow](const FlexItem& item) { return (flex_mode_grow ? item.flex_grow_factor : item.flex_shrink_factor); };
 
 		// Initialize items and freeze inflexible items.
 		for (FlexItem& item : line.items)
 		{
 			item.target_main_size = item.flex_base_size;
 
-			if (FlexFactor(item) == 0.f 
-				|| (flex_mode_grow && item.flex_base_size > item.hypothetical_main_size)
-				|| (!flex_mode_grow && item.flex_base_size < item.hypothetical_main_size))
+			if (FlexFactor(item) == 0.f || (flex_mode_grow && item.flex_base_size > item.hypothetical_main_size) ||
+				(!flex_mode_grow && item.flex_base_size < item.hypothetical_main_size))
 			{
 				item.frozen = true;
 				item.target_main_size = item.hypothetical_main_size;
@@ -390,9 +382,8 @@ void LayoutFlex::Format()
 		{
 			float remaining_free_space = RemainingFreeSpace();
 
-			const float flex_factor_sum = std::accumulate(line.items.begin(), line.items.end(), 0.f, [&FlexFactor](float value, const FlexItem& item) {
-				return value + (item.frozen ? 0.0f : FlexFactor(item));
-			});
+			const float flex_factor_sum = std::accumulate(line.items.begin(), line.items.end(), 0.f,
+				[&FlexFactor](float value, const FlexItem& item) { return value + (item.frozen ? 0.0f : FlexFactor(item)); });
 
 			if (flex_factor_sum < 1.f)
 			{
@@ -417,9 +408,10 @@ void LayoutFlex::Format()
 				}
 				else
 				{
-					const float scaled_flex_shrink_factor_sum = std::accumulate(line.items.begin(), line.items.end(), 0.f, [](float value, const FlexItem& item) {
-						return value + (item.frozen ? 0.0f : item.flex_shrink_factor * item.inner_flex_base_size);
-					});
+					const float scaled_flex_shrink_factor_sum =
+						std::accumulate(line.items.begin(), line.items.end(), 0.f, [](float value, const FlexItem& item) {
+							return value + (item.frozen ? 0.0f : item.flex_shrink_factor * item.inner_flex_base_size);
+						});
 
 					for (FlexItem& item : line.items)
 					{
@@ -441,19 +433,21 @@ void LayoutFlex::Format()
 				if (!item.frozen)
 				{
 					const float inner_target_main_size = Math::Max(0.0f, item.target_main_size - item.main.sum_edges);
-					const float clamped_target_main_size = Math::Clamp(inner_target_main_size, item.main.min_size, item.main.max_size) + item.main.sum_edges;
+					const float clamped_target_main_size =
+						Math::Clamp(inner_target_main_size, item.main.min_size, item.main.max_size) + item.main.sum_edges;
 
 					const float violation_diff = clamped_target_main_size - item.target_main_size;
-					item.violation = (violation_diff > 0.0f ? FlexItem::Violation::Min : (violation_diff < 0.f ? FlexItem::Violation::Max : FlexItem::Violation::None));
+					item.violation = (violation_diff > 0.0f ? FlexItem::Violation::Min
+															: (violation_diff < 0.f ? FlexItem::Violation::Max : FlexItem::Violation::None));
 					item.target_main_size = clamped_target_main_size;
-					
+
 					total_minmax_violation += violation_diff;
 				}
 			}
 
 			for (FlexItem& item : line.items)
 			{
-				 if (total_minmax_violation > 0.0f)
+				if (total_minmax_violation > 0.0f)
 					item.frozen |= (item.violation == FlexItem::Violation::Min);
 				else if (total_minmax_violation < 0.0f)
 					item.frozen |= (item.violation == FlexItem::Violation::Max);
@@ -467,22 +461,19 @@ void LayoutFlex::Format()
 			item.used_main_size = item.target_main_size;
 	}
 
-
-	// -- Align main axis (§9.5) -- 
+	// -- Align main axis (§9.5) --
 	// Main alignment is done before cross sizing. Due to rounding to the pixel grid, the main size can
 	// change slightly after main alignment/offseting. Also, the cross sizing depends on the main sizing
 	// so doing it in this order ensures no surprises (overflow/wrapping issues) due to pixel rounding.
 	for (FlexLine& line : container.lines)
 	{
-		const float remaining_free_space = used_main_size - std::accumulate(line.items.begin(), line.items.end(), 0.f, [](float value, const FlexItem& item) {
-			return value + item.used_main_size;
-		});
+		const float remaining_free_space = used_main_size -
+			std::accumulate(line.items.begin(), line.items.end(), 0.f, [](float value, const FlexItem& item) { return value + item.used_main_size; });
 
 		if (remaining_free_space > 0.0f)
 		{
-			const int num_auto_margins = std::accumulate(line.items.begin(), line.items.end(), 0, [](int value, const FlexItem& item) {
-				return value + int(item.main.auto_margin_a) + int(item.main.auto_margin_b);
-			});
+			const int num_auto_margins = std::accumulate(line.items.begin(), line.items.end(), 0,
+				[](int value, const FlexItem& item) { return value + int(item.main.auto_margin_a) + int(item.main.auto_margin_b); });
 
 			if (num_auto_margins > 0)
 			{
@@ -557,7 +548,6 @@ void LayoutFlex::Format()
 		}
 	}
 
-
 	// -- Determine cross size (§9.4) --
 	// First, determine the cross size of each item, format it if necessary.
 	for (FlexLine& line : container.lines)
@@ -585,7 +575,8 @@ void LayoutFlex::Format()
 				if (content_size.x < 0.0f || item.cross.auto_size)
 				{
 					item.box.SetContent(Vector2f(content_size.x, used_main_size_inner));
-					item.hypothetical_cross_size = LayoutDetails::GetShrinkToFitWidth(item.element, flex_content_containing_block) + item.cross.sum_edges;
+					item.hypothetical_cross_size =
+						LayoutDetails::GetShrinkToFitWidth(item.element, flex_content_containing_block) + item.cross.sum_edges;
 				}
 				else
 				{
@@ -604,9 +595,10 @@ void LayoutFlex::Format()
 	{
 		for (FlexLine& line : container.lines)
 		{
-			const float largest_hypothetical_cross_size = std::max_element(line.items.begin(), line.items.end(), [](const FlexItem& a, const FlexItem& b) {
-				return a.hypothetical_cross_size < b.hypothetical_cross_size;
-			})->hypothetical_cross_size;
+			const float largest_hypothetical_cross_size =
+				std::max_element(line.items.begin(), line.items.end(), [](const FlexItem& a, const FlexItem& b) {
+					return a.hypothetical_cross_size < b.hypothetical_cross_size;
+				})->hypothetical_cross_size;
 
 			// Currently, we don't handle the case where baseline alignment could extend the line's cross size, see CSS specs 9.4.8.
 			line.cross_size = Math::Max(0.0f, largest_hypothetical_cross_size);
@@ -620,8 +612,8 @@ void LayoutFlex::Format()
 	if (cross_available_size >= 0.f && computed_flex.align_content == Style::AlignContent::Stretch)
 	{
 		int remaining_space = static_cast<int>(cross_available_size -
-			std::accumulate(
-				container.lines.begin(), container.lines.end(), 0.f, [](float value, const FlexLine& line) { return value + line.cross_size; }));
+			std::accumulate(container.lines.begin(), container.lines.end(), 0.f,
+				[](float value, const FlexLine& line) { return value + line.cross_size; }));
 
 		if (remaining_space > 0)
 		{
@@ -644,8 +636,10 @@ void LayoutFlex::Format()
 			const bool stretch_item = (item.align_self == Style::AlignSelf::Stretch);
 			if (stretch_item && item.cross.auto_size && !item.cross.auto_margin_a && !item.cross.auto_margin_b)
 			{
-				item.used_cross_size = Math::Clamp(line.cross_size - item.cross.sum_edges, item.cross.min_size, item.cross.max_size) + item.cross.sum_edges;
-				// Here we are supposed to re-format the item with the new size, so that percentages can be resolved, see CSS specs Sec. 9.4.11. Seems very slow, we skip this for now.
+				item.used_cross_size =
+					Math::Clamp(line.cross_size - item.cross.sum_edges, item.cross.min_size, item.cross.max_size) + item.cross.sum_edges;
+				// Here we are supposed to re-format the item with the new size, so that percentages can be resolved, see CSS specs Sec. 9.4.11. Seems
+				// very slow, we skip this for now.
 			}
 			else
 			{
@@ -728,7 +722,8 @@ void LayoutFlex::Format()
 			// Align all baseline items such that their baselines are aligned with the one with the max. baseline distance.
 			// Cross offset for all baseline items are currently set as in 'flex-start'.
 			const float max_baseline_margin_top = (wrap_reverse ? max_baseline_item->cross.margin_b : max_baseline_item->cross.margin_a);
-			const float line_top_to_baseline_distance = max_baseline_item->cross_offset - max_baseline_margin_top + max_baseline_item->cross_baseline_top;
+			const float line_top_to_baseline_distance =
+				max_baseline_item->cross_offset - max_baseline_margin_top + max_baseline_item->cross_baseline_top;
 
 			for (FlexItem& item : line.items)
 			{
@@ -745,8 +740,8 @@ void LayoutFlex::Format()
 			Math::SnapToPixelGrid(item.cross_offset, item.used_cross_size);
 	}
 
-	const float accumulated_lines_cross_size = std::accumulate(
-		container.lines.begin(), container.lines.end(), 0.f, [](float value, const FlexLine& line) { return value + line.cross_size; });
+	const float accumulated_lines_cross_size = std::accumulate(container.lines.begin(), container.lines.end(), 0.f,
+		[](float value, const FlexLine& line) { return value + line.cross_size; });
 
 	// If the available cross size is infinite, the used cross size becomes the accumulated line cross size.
 	const float used_cross_size = cross_available_size >= 0.f ? cross_available_size : accumulated_lines_cross_size;
@@ -795,7 +790,7 @@ void LayoutFlex::Format()
 					line.cross_spacing_b = space_per_edge;
 				}
 			}
-				break;
+			break;
 			case AlignContent::Stretch:
 				// Handled above.
 				break;
@@ -835,7 +830,7 @@ void LayoutFlex::Format()
 
 			// Set the position of the element within the the flex container
 			item.element->SetOffset(flex_content_offset + item_offset, element_flex);
-			
+
 			// The cell contents may overflow, propagate this to the flex container.
 			const Vector2f overflow_size = item_offset + cell_visible_overflow_size -
 				Vector2f(item.box.GetEdge(Box::MARGIN, Box::LEFT), item.box.GetEdge(Box::MARGIN, Box::TOP));
