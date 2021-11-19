@@ -601,7 +601,7 @@ void LayoutFlex::Format()
 				})->hypothetical_cross_size;
 
 			// Currently, we don't handle the case where baseline alignment could extend the line's cross size, see CSS specs 9.4.8.
-			line.cross_size = Math::Max(0.0f, Math::RoundUpFloat(largest_hypothetical_cross_size));
+			line.cross_size = Math::Max(0.0f, Math::RoundFloat(largest_hypothetical_cross_size));
 
 			if (flex_single_line)
 				line.cross_size = Math::Clamp(line.cross_size, cross_min_size, cross_max_size);
