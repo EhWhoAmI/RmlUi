@@ -412,13 +412,14 @@ void LayoutFlex::Format()
 						std::accumulate(line.items.begin(), line.items.end(), 0.f, [](float value, const FlexItem& item) {
 							return value + (item.frozen ? 0.0f : item.flex_shrink_factor * item.inner_flex_base_size);
 						});
+					const float scaled_flex_shrink_factor_sum_nonzero = (scaled_flex_shrink_factor_sum == 0 ? 1 : scaled_flex_shrink_factor_sum);
 
 					for (FlexItem& item : line.items)
 					{
 						if (!item.frozen)
 						{
 							const float scaled_flex_shrink_factor = item.flex_shrink_factor * item.inner_flex_base_size;
-							const float distribute_ratio = scaled_flex_shrink_factor / scaled_flex_shrink_factor_sum;
+							const float distribute_ratio = scaled_flex_shrink_factor / scaled_flex_shrink_factor_sum_nonzero;
 							item.target_main_size = item.flex_base_size - distribute_ratio * Math::AbsoluteValue(remaining_free_space);
 						}
 					}
