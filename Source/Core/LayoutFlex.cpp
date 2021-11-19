@@ -543,8 +543,8 @@ void LayoutFlex::Format()
 			else
 				item.main_offset = cursor + item.main.margin_a + item.main_auto_margin_size_a;
 
-			Math::SnapToPixelGrid(item.main_offset, item.used_main_size);
 			cursor += item.used_main_size + item.main_auto_margin_size_a + item.main_auto_margin_size_b;
+			Math::SnapToPixelGrid(item.main_offset, item.used_main_size);
 		}
 	}
 
@@ -601,7 +601,7 @@ void LayoutFlex::Format()
 				})->hypothetical_cross_size;
 
 			// Currently, we don't handle the case where baseline alignment could extend the line's cross size, see CSS specs 9.4.8.
-			line.cross_size = Math::Max(0.0f, largest_hypothetical_cross_size);
+			line.cross_size = Math::Max(0.0f, Math::RoundUpFloat(largest_hypothetical_cross_size));
 
 			if (flex_single_line)
 				line.cross_size = Math::Clamp(line.cross_size, cross_min_size, cross_max_size);
