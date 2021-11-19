@@ -27,12 +27,13 @@
 			padding: 10dp;
 			margin: 0 5dp;
 			background-color: #edd3c0;
+			flex: 1;
 		}
 		h2 {
 			text-align: center;
 			background-color: #eb6e14;
 			margin: -10dp -10dp 0;
-			padding: 10dp 0; 
+			padding: 10dp 0;
 		}
 	</style>
 </head>
