@@ -4,6 +4,7 @@
     <link type="text/rcss" href="../style.rcss"/>
 	<link rel="help" href="https://drafts.csswg.org/css-flexbox/" />
 	<meta name="Description" content="Basic flexible box layout." />
+	<meta name="Animation" content="Hover over the articles to animate their size." />
 	<style>
 		header, article { display: block; }
 		h1 { font-size: 1.5em; }
@@ -28,12 +29,20 @@
 			margin: 0 5dp;
 			background-color: #edd3c0;
 			flex: 1;
+			transition: 0.3s flex-grow cubic-out;
+		}
+		article:hover {
+			flex: 1.2;
+			background-color: #fde3d0;
 		}
 		h2 {
 			text-align: center;
 			background-color: #eb6e14;
 			margin: -10dp -10dp 0;
 			padding: 10dp 0;
+		}
+		article:hover h2 {
+			background-color: #fb7e24;
 		}
 	</style>
 </head>
