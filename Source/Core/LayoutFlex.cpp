@@ -270,22 +270,20 @@ void LayoutFlex::Format()
 		}
 		else
 		{
-			if (item.box.GetSize().y >= 0.f)
-			{
-				item.inner_flex_base_size = item.box.GetSize().y;
-			}
-			else
-			{
-				LayoutEngine::FormatElement(element, flex_content_containing_block, &item.box);
-				item.inner_flex_base_size = element->GetBox().GetSize().y;
-			}
+			const Vector2f initial_box_size = item.box.GetSize();
+			RMLUI_ASSERT(initial_box_size.y < 0.f);
+
+			Box format_box = item.box;
+			if (initial_box_size.x < 0.f)
+				format_box.SetContent(Vector2f(flex_available_content_size.x - item.cross.sum_edges, initial_box_size.y));
+
+			LayoutEngine::FormatElement(element, flex_content_containing_block, &format_box);
+			item.inner_flex_base_size = element->GetBox().GetSize().y;
 		}
 
 		// Calculate the hypothetical main size (clamped flex base size).
-		{
-			item.hypothetical_main_size = Math::Clamp(item.inner_flex_base_size, item.main.min_size, item.main.max_size) + item.main.sum_edges;
-			item.flex_base_size = item.inner_flex_base_size + item.main.sum_edges;
-		}
+		item.hypothetical_main_size = Math::Clamp(item.inner_flex_base_size, item.main.min_size, item.main.max_size) + item.main.sum_edges;
+		item.flex_base_size = item.inner_flex_base_size + item.main.sum_edges;
 
 		items.push_back(std::move(item));
 	}
