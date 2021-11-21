@@ -42,7 +42,7 @@
 			flex: 1;
 		}
 		.wrapper {
-			height: 165dp;
+			min-height: 165dp;
 		}
 	</style>
 </head>
