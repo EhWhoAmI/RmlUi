@@ -338,11 +338,13 @@ void LayoutFlex::Format()
 	}
 
 	// If the available main size is infinite, the used main size becomes the accumulated outer size of all items of the widest line.
-	const float used_main_size = main_available_size >= 0.f
+	const float used_main_size_unconstrained = main_available_size >= 0.f
 		? main_available_size
 		: std::max_element(container.lines.begin(), container.lines.end(), [](const FlexLine& a, const FlexLine& b) {
 			  return a.accumulated_hypothetical_main_size < b.accumulated_hypothetical_main_size;
 		  })->accumulated_hypothetical_main_size;
+
+	const float used_main_size = Math::Clamp(used_main_size_unconstrained, main_min_size, main_max_size);
 
 	// -- Determine main size --
 	// Resolve flexible lengths to find the used main size of all items.
@@ -743,7 +745,8 @@ void LayoutFlex::Format()
 		[](float value, const FlexLine& line) { return value + line.cross_size; });
 
 	// If the available cross size is infinite, the used cross size becomes the accumulated line cross size.
-	const float used_cross_size = cross_available_size >= 0.f ? cross_available_size : accumulated_lines_cross_size;
+	const float used_cross_size_unconstrained = cross_available_size >= 0.f ? cross_available_size : accumulated_lines_cross_size;
+	const float used_cross_size = Math::Clamp(used_cross_size_unconstrained, cross_min_size, cross_max_size);
 
 	// Align the lines along the cross-axis.
 	{
